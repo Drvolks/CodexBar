@@ -216,6 +216,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     private var lastConfigRevision: Int
     private var lastProviderOrder: [UsageProvider]
     private var lastMergeIcons: Bool
+    private var lastMergedMenuBarIconProviders: [UsageProvider]
     private var lastSwitcherShowsIcons: Bool
     private var lastObservedUsageBarsShowUsed: Bool
     /// Tracks which `usageBarsShowUsed` mode the provider switcher was built with.
@@ -392,6 +393,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.lastConfigRevision = settings.configRevision
         self.lastProviderOrder = settings.providerOrder
         self.lastMergeIcons = settings.mergeIcons
+        self.lastMergedMenuBarIconProviders = settings.mergedMenuBarIconProviders
         self.lastSwitcherShowsIcons = settings.switcherShowsIcons
         self.lastObservedUsageBarsShowUsed = settings.usageBarsShowUsed
         self.lastSwitcherUsageBarsShowUsed = settings.usageBarsShowUsed
@@ -629,6 +631,11 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
             self.lastMergeIcons = mergeIcons
             shouldRefresh = true
         }
+        let mergedIconProviders = self.settings.mergedMenuBarIconProviders
+        if mergedIconProviders != self.lastMergedMenuBarIconProviders {
+            self.lastMergedMenuBarIconProviders = mergedIconProviders
+            shouldRefresh = true
+        }
         let showsIcons = self.settings.switcherShowsIcons
         if showsIcons != self.lastSwitcherShowsIcons {
             self.lastSwitcherShowsIcons = showsIcons
@@ -777,113 +784,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         }
         self.updateAnimationState()
         self.updateBlinkingState()
-    }
-
-    var fallbackProvider: UsageProvider? {
-        // Intentionally uses availability-filtered list: fallback activates when no provider
-        // can actually work, ensuring at least a codex icon is always visible.
-        self.store.enabledProviders().isEmpty ? .codex : nil
-    }
-
-    func isEnabled(_ provider: UsageProvider) -> Bool {
-        self.store.isEnabled(provider)
-    }
-
-    private func refreshMenusForLoginStateChange() {
-        #if DEBUG
-        guard !self.isReleasedForTesting else { return }
-        #endif
-        self.invalidateMenus()
-        if self.shouldMergeIcons {
-            guard !self.isMergedMenuOpen else { return }
-            self.attachMenus()
-        } else {
-            self.attachMenus(fallback: self.fallbackProvider)
-        }
-    }
-
-    private func attachMenus() {
-        if self.mergedMenu == nil {
-            self.mergedMenu = self.makeMenu()
-        }
-        if self.statusItem.menu !== self.mergedMenu {
-            self.statusItem.menu = self.mergedMenu
-        }
-        self.prepareAttachedClosedMenusIfNeeded()
-    }
-
-    private func attachMenus(fallback: UsageProvider? = nil) {
-        for provider in UsageProvider.allCases {
-            // Only access/create the status item if it's actually needed
-            let shouldHaveItem = self.isEnabled(provider) || fallback == provider
-
-            if shouldHaveItem {
-                let item = self.lazyStatusItem(for: provider)
-
-                if self.isEnabled(provider) {
-                    if self.providerMenus[provider] == nil {
-                        self.providerMenus[provider] = self.makeMenu(for: provider)
-                    }
-                    let menu = self.providerMenus[provider]
-                    if item.menu !== menu {
-                        item.menu = menu
-                    }
-                } else if fallback == provider {
-                    if self.fallbackMenu == nil {
-                        self.fallbackMenu = self.makeMenu(for: nil)
-                    }
-                    if item.menu !== self.fallbackMenu {
-                        item.menu = self.fallbackMenu
-                    }
-                }
-            } else if let item = self.statusItems[provider] {
-                item.menu = nil
-            }
-        }
-        self.prepareAttachedClosedMenusIfNeeded()
-    }
-
-    private func rebuildProviderStatusItems() {
-        #if DEBUG
-        guard !self.isReleasedForTesting else { return }
-        #endif
-        let ordered = self.settings.orderedProviders()
-        let desired = Set(ordered)
-        for provider in Array(self.statusItems.keys) where !desired.contains(provider) {
-            self.removeProviderStatusItem(for: provider)
-        }
-
-        guard !self.shouldMergeIcons else { return }
-        let fallback = self.fallbackProvider
-        let force = self.store.debugForceAnimation
-        for provider in ordered where self.isEnabled(provider) || fallback == provider || force {
-            _ = self.lazyStatusItem(for: provider)
-        }
-    }
-
-    private func removeProviderStatusItem(for provider: UsageProvider) {
-        if let menu = self.providerMenus.removeValue(forKey: provider) {
-            let menuID = ObjectIdentifier(menu)
-            if menuID == self.providerSwitcherShortcutMenuID {
-                self.removeProviderSwitcherShortcutMonitor()
-            }
-            self.clearMergedSwitcherContentCache(for: menu)
-            self.removeMenuLifecycleState(menuID)
-        }
-
-        guard let item = self.statusItems.removeValue(forKey: provider) else { return }
-        item.menu = nil
-        self.lastAppliedProviderIconRenderSignatures.removeValue(forKey: provider)
-        self.statusBar.removeStatusItem(item)
-    }
-
-    func isVisible(_ provider: UsageProvider) -> Bool {
-        self.store.debugForceAnimation || self.isEnabled(provider)
-            || self.fallbackProvider == provider
-    }
-
-    var shouldMergeIcons: Bool {
-        self.settings.mergeIcons && self.store.enabledProvidersForDisplay().count > 1
     }
 
     func switchAccountSubtitle(for target: UsageProvider) -> String? {

@@ -54,7 +54,8 @@ extension StatusItemController {
 
     private func menuBarCountdownProviders() -> [UsageProvider] {
         if self.shouldMergeIcons {
-            return [self.primaryProviderForUnifiedIcon()]
+            let selected = self.mergedMenuBarIconProvidersForDisplay()
+            return selected.isEmpty ? [self.primaryProviderForUnifiedIcon()] : selected
         }
         return UsageProvider.allCases.filter(self.isVisible)
     }

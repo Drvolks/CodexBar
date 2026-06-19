@@ -348,10 +348,10 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
     }
 
     func celebrationOriginPoint(for provider: UsageProvider?) -> CGPoint? {
-        let item: NSStatusItem = if self.shouldMergeIcons {
-            self.statusItem
-        } else if let provider, let existing = self.statusItems[provider], existing.isVisible {
+        let item: NSStatusItem = if let provider, let existing = self.statusItems[provider], existing.isVisible {
             existing
+        } else if self.shouldMergeIcons {
+            self.statusItem
         } else {
             self.lazyStatusItem(for: provider ?? .codex)
         }

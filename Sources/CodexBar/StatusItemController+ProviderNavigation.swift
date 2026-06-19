@@ -31,7 +31,7 @@ extension StatusItemController {
         self.updateAnimationState()
         self.updateBlinkingState()
         let phase: Double? = self.needsMenuBarIconAnimation() ? self.animationPhase : nil
-        self.applyIcon(phase: phase)
+        self.applyVisibleIcons(phase: phase)
     }
 
     func navigateProviderSwitcher(
@@ -39,7 +39,7 @@ extension StatusItemController {
         menu: NSMenu? = nil)
     {
         guard self.shouldMergeIcons else { return }
-        let enabledProviders = self.store.enabledProvidersForDisplay()
+        let enabledProviders = self.mergedStatusItemProvidersForDisplay()
         guard enabledProviders.count > 1 else { return }
 
         let includesOverview = !self.settings.resolvedMergedOverviewProviders(

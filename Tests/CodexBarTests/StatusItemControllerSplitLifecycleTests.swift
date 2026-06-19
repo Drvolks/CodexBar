@@ -81,6 +81,41 @@ struct StatusItemControllerSplitLifecycleTests {
     }
 
     @Test
+    func `merged mode renders selected providers inside the merged status item`() throws {
+        let (settings, controller) = try self.makeSplitController()
+        defer { controller.releaseStatusItemsForTesting() }
+
+        settings.setMergedMenuBarIconProvider(.claude, isSelected: true)
+        settings.mergeIcons = true
+        controller.handleProviderConfigChange(reason: "test")
+
+        #expect(controller.statusItem.isVisible == true)
+        #expect(controller.statusItems.isEmpty)
+        #expect(controller.statusItem.menu != nil)
+        #expect(controller.mergedStatusItemProvidersForDisplay() == [.codex, .claude])
+        #expect(controller.mergedMenuBarIconProvidersForDisplay() == [.claude])
+
+        let mergedMenu = try #require(controller.statusItem.menu)
+        #expect(controller.renderedProviders(for: mergedMenu) == [.codex])
+    }
+
+    @Test
+    func `merged mode stays merged when all providers are selected as icon bars`() throws {
+        let (settings, controller) = try self.makeSplitController()
+        defer { controller.releaseStatusItemsForTesting() }
+
+        settings.setMergedMenuBarIconProvider(.codex, isSelected: true)
+        settings.setMergedMenuBarIconProvider(.claude, isSelected: true)
+        settings.mergeIcons = true
+        controller.handleProviderConfigChange(reason: "test")
+
+        #expect(controller.shouldMergeIcons == true)
+        #expect(controller.statusItem.isVisible == true)
+        #expect(controller.statusItems.isEmpty)
+        #expect(controller.mergedMenuBarIconProvidersForDisplay() == [.codex, .claude])
+    }
+
+    @Test
     func `removing split provider status items clears all menu lifecycle state`() throws {
         let (settings, controller) = try self.makeSplitController()
         defer { controller.releaseStatusItemsForTesting() }

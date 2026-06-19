@@ -525,6 +525,38 @@ extension SettingsStore {
         }
     }
 
+    private var mergedMenuBarIconProvidersRaw: [String] {
+        get { self.defaultsState.mergedMenuBarIconProvidersRaw }
+        set {
+            self.defaultsState.mergedMenuBarIconProvidersRaw = newValue
+            self.userDefaults.set(newValue, forKey: "mergedMenuBarIconProviders")
+        }
+    }
+
+    var mergedMenuBarIconProviders: [UsageProvider] {
+        get {
+            Self.decodeProviders(
+                self.mergedMenuBarIconProvidersRaw,
+                maxCount: Self.mergedMenuBarIconProviderLimit)
+        }
+        set {
+            let normalized = Self.normalizeProviders(
+                newValue,
+                maxCount: Self.mergedMenuBarIconProviderLimit)
+            self.mergedMenuBarIconProvidersRaw = normalized.map(\.rawValue)
+        }
+    }
+
+    func setMergedMenuBarIconProvider(_ provider: UsageProvider, isSelected: Bool) {
+        var providers = self.mergedMenuBarIconProviders
+        if isSelected {
+            providers.append(provider)
+        } else {
+            providers.removeAll { $0 == provider }
+        }
+        self.mergedMenuBarIconProviders = providers
+    }
+
     private var hasMergedOverviewSelectionPreference: Bool {
         self.userDefaults.object(forKey: "mergedOverviewSelectedProviders") != nil
     }

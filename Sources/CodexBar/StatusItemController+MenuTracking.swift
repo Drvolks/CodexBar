@@ -386,7 +386,7 @@ extension StatusItemController {
         self.populateMenu(menu, provider: provider)
         self.markMenuFresh(menu)
         self.menuSession.clearParentRebuildDeferral(key)
-        self.applyIcon(phase: nil)
+        self.applyVisibleIcons(phase: nil)
         #if DEBUG
         self._test_openMenuRebuildObserver?(menu)
         #endif

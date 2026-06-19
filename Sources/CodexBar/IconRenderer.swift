@@ -28,6 +28,12 @@ enum IconRenderer {
 
     private static let grid = PixelGrid(scale: outputScale)
 
+    struct MergedMetricBar: Hashable {
+        let style: IconStyle
+        let percent: Double?
+        let stale: Bool
+    }
+
     private struct IconCacheKey: Hashable {
         let primary: Int
         let weekly: Int
@@ -107,6 +113,105 @@ enum IconRenderer {
         }
 
         private static let grid = IconRenderer.grid
+    }
+
+    static func makeMergedMetricIcon(
+        metrics: [MergedMetricBar],
+        statusIndicator: ProviderStatusIndicator = .none,
+        hideCritters: Bool = false) -> NSImage
+    {
+        let visibleMetrics = Array(metrics.prefix(3))
+        return self.renderImage {
+            let baseFill = NSColor.labelColor
+            let hasStaleMetric = visibleMetrics.contains { $0.stale }
+            let trackStrokeAlpha: CGFloat = hasStaleMetric ? 0.30 : 0.44
+            let trackFillAlpha: CGFloat = hasStaleMetric ? 0.16 : 0.28
+
+            let barRects: [RectPx] = switch visibleMetrics.count {
+            case 1:
+                [RectPx(x: 3, y: 12, w: 30, h: 12)]
+            case 2:
+                [
+                    RectPx(x: 3, y: 20, w: 30, h: 9),
+                    RectPx(x: 3, y: 7, w: 30, h: 9),
+                ]
+            default:
+                [
+                    RectPx(x: 3, y: 25, w: 30, h: 7),
+                    RectPx(x: 3, y: 15, w: 30, h: 7),
+                    RectPx(x: 3, y: 5, w: 30, h: 7),
+                ]
+            }
+
+            func drawMetricBar(metric: MergedMetricBar, rectPx: RectPx) {
+                let rect = rectPx.rect()
+                let drawsDecorations = !hideCritters
+                let cornerRadiusPx = drawsDecorations && metric.style == .claude ? 0 : rectPx.h / 2
+                let radius = Self.grid.pt(cornerRadiusPx)
+                let trackPath = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+
+                baseFill.withAlphaComponent(trackFillAlpha).setFill()
+                trackPath.fill()
+
+                let strokeWidthPx = 2
+                let insetPx = strokeWidthPx / 2
+                let strokeRect = Self.grid.rect(
+                    x: rectPx.x + insetPx,
+                    y: rectPx.y + insetPx,
+                    w: max(0, rectPx.w - insetPx * 2),
+                    h: max(0, rectPx.h - insetPx * 2))
+                let strokePath = NSBezierPath(
+                    roundedRect: strokeRect,
+                    xRadius: Self.grid.pt(max(0, cornerRadiusPx - insetPx)),
+                    yRadius: Self.grid.pt(max(0, cornerRadiusPx - insetPx)))
+                strokePath.lineWidth = CGFloat(strokeWidthPx) / Self.outputScale
+                baseFill.withAlphaComponent(trackStrokeAlpha).setStroke()
+                strokePath.stroke()
+
+                if let percent = metric.percent {
+                    let clamped = max(0, min(percent / 100, 1))
+                    let fillWidthPx = max(0, min(rectPx.w, Int((CGFloat(rectPx.w) * CGFloat(clamped)).rounded())))
+                    if fillWidthPx > 0 {
+                        NSGraphicsContext.current?.cgContext.saveGState()
+                        trackPath.addClip()
+                        baseFill.withAlphaComponent(metric.stale ? 0.55 : 1).setFill()
+                        NSBezierPath(
+                            rect: Self.grid.rect(
+                                x: rectPx.x,
+                                y: rectPx.y,
+                                w: fillWidthPx,
+                                h: rectPx.h)).fill()
+                        NSGraphicsContext.current?.cgContext.restoreGState()
+                    }
+                }
+
+                guard drawsDecorations else { return }
+                if metric.style == .codex, rectPx.h >= 7 {
+                    let eyeSizePx = 2
+                    let eyeOffsetPx = 5
+                    let eyeYPx = rectPx.midYPx - eyeSizePx / 2
+                    let ctx = NSGraphicsContext.current?.cgContext
+                    ctx?.saveGState()
+                    ctx?.setShouldAntialias(false)
+                    ctx?.clear(Self.grid.rect(
+                        x: rectPx.midXPx - eyeOffsetPx - eyeSizePx / 2,
+                        y: eyeYPx,
+                        w: eyeSizePx,
+                        h: eyeSizePx))
+                    ctx?.clear(Self.grid.rect(
+                        x: rectPx.midXPx + eyeOffsetPx - eyeSizePx / 2,
+                        y: eyeYPx,
+                        w: eyeSizePx,
+                        h: eyeSizePx))
+                    ctx?.restoreGState()
+                }
+            }
+
+            for (metric, rect) in zip(visibleMetrics, barRects) {
+                drawMetricBar(metric: metric, rectPx: rect)
+            }
+            Self.drawStatusOverlay(indicator: statusIndicator)
+        }
     }
 
     // swiftlint:disable function_body_length

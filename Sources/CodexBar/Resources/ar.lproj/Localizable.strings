@@ -521,6 +521,14 @@
 "multi_account_layout_subtitle" = "اختر تبديل الحسابات المجزأة أو بطاقات الحساب المكدسة.";
 "multi_account_layout_segmented" = "مقسم";
 "multi_account_layout_stacked" = "مكدس";
+"merged_icon_metrics_title" = "Merged icon bars";
+"merged_icon_metrics_enable_merge_icons_hint" = "Enable Merge Icons to configure merged icon bars.";
+"merged_icon_metrics_no_providers_hint" = "No enabled providers available for merged icon bars.";
+"merged_icon_metrics_choose_providers" = "Choose bars to show in the merged icon";
+"merged_icon_metrics_hint" = "Select up to %@ providers and choose which quota each bar displays.";
+"merged_icon_metrics_no_providers_selected" = "No custom bars selected";
+"merged_icon_metrics_limit_hint" = "Up to %@ bars can be shown in the merged menu bar icon.";
+"merged_icon_metric_picker_label" = "Quota";
 "overview_tab_providers_title" = "نظرة عامة على مزودي تبويب";
 "configure" = "تكوين...";
 "overview_enable_merge_icons_hint" = "تفعيل أيقونات الدمج لتكوين مزودي تبويب النظرة العامة.";

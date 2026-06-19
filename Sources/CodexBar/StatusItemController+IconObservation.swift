@@ -6,14 +6,20 @@ extension StatusItemController {
         let showBrandPercent = self.settings.menuBarShowsBrandIconWithPercent
         let mergeIcons = self.shouldMergeIcons
         let visibleProviders = self.store.enabledProvidersForDisplay().map(\.rawValue).sorted().joined(separator: ",")
+        let mergedProviders = self.mergedStatusItemProvidersForDisplay().map(\.rawValue).joined(separator: ",")
+        let mergedIconProviders = self.mergedMenuBarIconProvidersForDisplay().map(\.rawValue).joined(separator: ",")
         let providerSignatures: String
         let primaryProvider: UsageProvider?
         if mergeIcons {
             let primary = self.primaryProviderForUnifiedIcon()
             primaryProvider = primary
-            providerSignatures = self.providerStoreIconObservationSignature(
-                for: primary,
-                showBrandPercent: showBrandPercent)
+            let iconProviders = self.mergedMenuBarIconProvidersForDisplay()
+            providerSignatures = iconProviders.isEmpty
+                ? self.providerStoreIconObservationSignature(
+                    for: primary,
+                    showBrandPercent: showBrandPercent)
+                : iconProviders.map { self.mergedMetricStoreIconObservationSignature(for: $0) }
+                .joined(separator: "||")
         } else {
             primaryProvider = nil
             providerSignatures = UsageProvider.allCases
@@ -24,8 +30,10 @@ extension StatusItemController {
         return [
             "merge=\(mergeIcons ? "1" : "0")",
             "visible=\(visibleProviders)",
+            "mergedProviders=\(mergedProviders)",
+            "mergedIconProviders=\(mergedIconProviders)",
             "primary=\(primaryProvider?.rawValue ?? "nil")",
-            "iconStyle=\(self.store.iconStyle.rawValue)",
+            "iconStyle=\((mergeIcons ? self.mergedIconStyle() : self.store.iconStyle).rawValue)",
             "showUsed=\(self.settings.usageBarsShowUsed ? "1" : "0")",
             "brandPercent=\(showBrandPercent ? "1" : "0")",
             "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
@@ -58,6 +66,24 @@ extension StatusItemController {
             "anim=\(self.shouldAnimate(provider: provider) ? "1" : "0")",
             "refreshing=\(self.store.refreshingProviders.contains(provider) ? "1" : "0")",
             "text=\(displayText ?? "nil")",
+        ].joined(separator: "|")
+    }
+
+    private func mergedMetricStoreIconObservationSignature(for provider: UsageProvider) -> String {
+        let snapshot = self.store.snapshot(for: provider)
+        let window = self.menuBarMetricWindow(for: provider, snapshot: snapshot)
+        let percent = window.map {
+            self.settings.usageBarsShowUsed ? $0.usedPercent : $0.remainingPercent
+        }
+        return [
+            provider.rawValue,
+            "style=\(self.store.style(for: provider).rawValue)",
+            "metric=\(self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot).rawValue)",
+            "percent=\(Self.iconSignatureValue(percent))",
+            "stale=\(self.store.isStale(provider: provider) ? "1" : "0")",
+            "status=\(self.store.statusIndicator(for: provider).rawValue)",
+            "anim=\(self.shouldAnimate(provider: provider) ? "1" : "0")",
+            "refreshing=\(self.store.refreshingProviders.contains(provider) ? "1" : "0")",
         ].joined(separator: "|")
     }
 }

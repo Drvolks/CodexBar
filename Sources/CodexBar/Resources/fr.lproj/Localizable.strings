@@ -521,6 +521,14 @@
 "multi_account_layout_subtitle" = "Choisissez un changement de compte segmenté ou des cartes de compte empilées.";
 "multi_account_layout_segmented" = "Segmenté";
 "multi_account_layout_stacked" = "Empilé";
+"merged_icon_metrics_title" = "Barres de l'icône fusionnée";
+"merged_icon_metrics_enable_merge_icons_hint" = "Activez Fusionner les icônes pour configurer les barres de l'icône fusionnée.";
+"merged_icon_metrics_no_providers_hint" = "Aucun fournisseur activé disponible pour les barres de l'icône fusionnée.";
+"merged_icon_metrics_choose_providers" = "Choisissez les barres à afficher dans l'icône fusionnée";
+"merged_icon_metrics_hint" = "Sélectionnez jusqu'à %@ fournisseurs et choisissez le quota affiché par chaque barre.";
+"merged_icon_metrics_no_providers_selected" = "Aucune barre personnalisée sélectionnée";
+"merged_icon_metrics_limit_hint" = "Jusqu'à %@ barres peuvent être affichées dans l'icône fusionnée.";
+"merged_icon_metric_picker_label" = "Quota";
 "overview_tab_providers_title" = "Fournisseurs d'onglets de présentation";
 "configure" = "Configurer…";
 "overview_enable_merge_icons_hint" = "Activez Fusionner les icônes pour configurer les fournisseurs d'onglets Présentation.";

@@ -10,6 +10,7 @@ struct DisplayPane: View {
     }
 
     @State private var isOverviewProviderPopoverPresented = false
+    @State private var isMergedIconMetricsPopoverPresented = false
     @Bindable var settings: SettingsStore
     @Bindable var store: UsageStore
 
@@ -25,6 +26,7 @@ struct DisplayPane: View {
                         title: L("merge_icons_title"),
                         subtitle: L("merge_icons_subtitle"),
                         binding: self.$settings.mergeIcons)
+                    self.mergedIconMetricsSelector
                     PreferenceToggleRow(
                         title: L("switcher_shows_icons_title"),
                         subtitle: L("switcher_shows_icons_subtitle"),
@@ -143,6 +145,7 @@ struct DisplayPane: View {
             .onChange(of: self.settings.mergeIcons) { _, isEnabled in
                 guard isEnabled else {
                     self.isOverviewProviderPopoverPresented = false
+                    self.isMergedIconMetricsPopoverPresented = false
                     return
                 }
                 self.reconcileOverviewSelection()
@@ -150,10 +153,103 @@ struct DisplayPane: View {
             .onChange(of: self.activeProvidersInOrder) { _, _ in
                 if self.activeProvidersInOrder.isEmpty {
                     self.isOverviewProviderPopoverPresented = false
+                    self.isMergedIconMetricsPopoverPresented = false
                 }
                 self.reconcileOverviewSelection()
             }
         }
+    }
+
+    private var mergedIconMetricsSelector: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                Text(L("merged_icon_metrics_title"))
+                    .font(.body)
+                Spacer(minLength: 0)
+                if self.showsMergedIconMetricsConfigureButton {
+                    Button(L("configure")) {
+                        self.isMergedIconMetricsPopoverPresented = true
+                    }
+                    .offset(y: 1)
+                    .popover(isPresented: self.$isMergedIconMetricsPopoverPresented, arrowEdge: .bottom) {
+                        self.mergedIconMetricsPopover
+                    }
+                }
+            }
+
+            if !self.settings.mergeIcons {
+                Text(L("merged_icon_metrics_enable_merge_icons_hint"))
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            } else if self.activeProvidersInOrder.isEmpty {
+                Text(L("merged_icon_metrics_no_providers_hint"))
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text(self.mergedIconMetricsSelectionSummary)
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+        }
+    }
+
+    private var mergedIconMetricsPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L("merged_icon_metrics_choose_providers"))
+                .font(.headline)
+            Text(L("merged_icon_metrics_hint"))
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(self.activeProvidersInOrder, id: \.self) { provider in
+                        let isSelected = self.mergedIconMetricProviders.contains(provider)
+                        HStack(alignment: .center, spacing: 8) {
+                            Toggle(
+                                isOn: Binding(
+                                    get: { self.mergedIconMetricProviders.contains(provider) },
+                                    set: { shouldSelect in
+                                        self.settings.setMergedMenuBarIconProvider(
+                                            provider,
+                                            isSelected: shouldSelect)
+                                    })) {
+                                Text(self.providerDisplayName(provider))
+                                    .font(.body)
+                            }
+                            .toggleStyle(.checkbox)
+                            .disabled(!isSelected && self.mergedIconMetricProviders.count >= Self
+                                .maxIconMetricProviders)
+
+                            Spacer(minLength: 0)
+
+                            Picker(
+                                L("merged_icon_metric_picker_label"),
+                                selection: self.metricPreferenceBinding(for: provider))
+                            {
+                                ForEach(self.metricOptions(for: provider)) { option in
+                                    Text(option.title).tag(option.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 150)
+                            .disabled(!isSelected)
+                            .opacity(isSelected ? 1 : 0.45)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 220)
+
+            Text(L("merged_icon_metrics_limit_hint", String(Self.maxIconMetricProviders)))
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .frame(width: 360)
     }
 
     private var overviewProviderSelector: some View {
@@ -238,6 +334,25 @@ struct DisplayPane: View {
         self.settings.mergeIcons && !self.activeProvidersInOrder.isEmpty
     }
 
+    private static let maxIconMetricProviders = SettingsStore.mergedMenuBarIconProviderLimit
+
+    private var showsMergedIconMetricsConfigureButton: Bool {
+        self.settings.mergeIcons && !self.activeProvidersInOrder.isEmpty
+    }
+
+    private var mergedIconMetricProviders: [UsageProvider] {
+        let active = Set(self.activeProvidersInOrder)
+        return self.settings.mergedMenuBarIconProviders.filter { active.contains($0) }
+    }
+
+    private var mergedIconMetricsSelectionSummary: String {
+        let selectedNames = self.mergedIconMetricProviders.map { provider in
+            "\(self.providerDisplayName(provider)) · \(self.selectedMetricTitle(for: provider))"
+        }
+        guard !selectedNames.isEmpty else { return L("merged_icon_metrics_no_providers_selected") }
+        return selectedNames.joined(separator: ", ")
+    }
+
     private var overviewProviderSelectionSummary: String {
         let selectedNames = self.overviewSelectedProviders.map(self.providerDisplayName)
         guard !selectedNames.isEmpty else { return L("overview_no_providers_selected") }
@@ -246,6 +361,72 @@ struct DisplayPane: View {
 
     private func providerDisplayName(_ provider: UsageProvider) -> String {
         ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName
+    }
+
+    private func metricPreferenceBinding(for provider: UsageProvider) -> Binding<String> {
+        Binding(
+            get: {
+                self.settings
+                    .menuBarMetricPreference(for: provider, snapshot: self.store.snapshot(for: provider))
+                    .rawValue
+            },
+            set: { rawValue in
+                guard let preference = MenuBarMetricPreference(rawValue: rawValue) else { return }
+                self.settings.setMenuBarMetricPreference(preference, for: provider)
+            })
+    }
+
+    private func selectedMetricTitle(for provider: UsageProvider) -> String {
+        let rawValue = self.settings
+            .menuBarMetricPreference(for: provider, snapshot: self.store.snapshot(for: provider))
+            .rawValue
+        return self.metricOptions(for: provider).first(where: { $0.id == rawValue })?.title
+            ?? MenuBarMetricPreference.automatic.label
+    }
+
+    private func metricOptions(for provider: UsageProvider) -> [DisplayPaneMetricOption] {
+        if provider == .openrouter {
+            return [
+                DisplayPaneMetricOption(id: MenuBarMetricPreference.automatic.rawValue, title: L("automatic")),
+                DisplayPaneMetricOption(
+                    id: MenuBarMetricPreference.primary.rawValue,
+                    title: L("primary_api_key_limit")),
+            ]
+        }
+        if SettingsStore.isBalanceOnlyProvider(provider) {
+            return [
+                DisplayPaneMetricOption(id: MenuBarMetricPreference.automatic.rawValue, title: L("Automatic")),
+            ]
+        }
+
+        let metadata = self.store.metadata(for: provider)
+        let snapshot = self.store.snapshot(for: provider)
+        var options: [DisplayPaneMetricOption] = [
+            DisplayPaneMetricOption(id: MenuBarMetricPreference.automatic.rawValue, title: L("automatic")),
+            DisplayPaneMetricOption(
+                id: MenuBarMetricPreference.primary.rawValue,
+                title: String(format: L("metric_primary"), metadata.sessionLabel)),
+            DisplayPaneMetricOption(
+                id: MenuBarMetricPreference.secondary.rawValue,
+                title: String(format: L("metric_secondary"), metadata.weeklyLabel)),
+        ]
+        if self.settings.menuBarMetricSupportsTertiary(for: provider, snapshot: snapshot) {
+            let tertiaryTitle = metadata.opusLabel ?? MenuBarMetricPreference.tertiary.label
+            options.append(DisplayPaneMetricOption(
+                id: MenuBarMetricPreference.tertiary.rawValue,
+                title: String(format: L("metric_tertiary"), tertiaryTitle)))
+        }
+        if self.settings.menuBarMetricSupportsExtraUsage(for: provider, snapshot: snapshot) {
+            options.append(DisplayPaneMetricOption(
+                id: MenuBarMetricPreference.extraUsage.rawValue,
+                title: MenuBarMetricPreference.extraUsage.label))
+        }
+        if self.settings.menuBarMetricSupportsAverage(for: provider) {
+            options.append(DisplayPaneMetricOption(
+                id: MenuBarMetricPreference.average.rawValue,
+                title: String(format: L("metric_average"), metadata.sessionLabel, metadata.weeklyLabel)))
+        }
+        return options
     }
 
     private func setOverviewProviderSelection(provider: UsageProvider, isSelected: Bool) {
@@ -261,4 +442,9 @@ struct DisplayPane: View {
             activeProviders: self.activeProvidersInOrder,
             maxVisibleProviders: Self.maxOverviewProviders)
     }
+}
+
+private struct DisplayPaneMetricOption: Identifiable {
+    let id: String
+    let title: String
 }

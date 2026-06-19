@@ -10,12 +10,38 @@ extension StatusItemController {
     static let loadingAnimationPhaseIncrement: Double =
         2.7 / StatusItemController.loadingAnimationFPS
     private static let loadingAnimationMaxContinuousDuration: TimeInterval = 30.0
+
+    private func mergedIconAnimationProviders() -> [UsageProvider] {
+        let selected = self.mergedMenuBarIconProvidersForDisplay()
+        guard selected.isEmpty else { return selected }
+        return [self.primaryProviderForUnifiedIcon()]
+    }
+
     func needsMenuBarIconAnimation() -> Bool {
         if self.shouldMergeIcons {
-            let primaryProvider = self.primaryProviderForUnifiedIcon()
-            return self.shouldAnimate(provider: primaryProvider)
+            return self.mergedIconAnimationProviders().contains {
+                self.shouldAnimate(provider: $0)
+            }
         }
         return UsageProvider.allCases.contains { self.shouldAnimate(provider: $0) }
+    }
+
+    func applyVisibleIcons(phase: Double?) {
+        if self.shouldMergeIcons {
+            self.applyIcon(phase: phase)
+        } else {
+            UsageProvider.allCases.forEach { self.applyIcon(for: $0, phase: phase) }
+        }
+    }
+
+    private func blinkRenderProviders(mergeIcons: Bool) -> [UsageProvider] {
+        guard mergeIcons else {
+            return UsageProvider.allCases.filter { self.isVisible($0) }
+        }
+        var seen: Set<UsageProvider> = []
+        return self.mergedIconAnimationProviders().filter {
+            seen.insert($0).inserted
+        }
     }
 
     func updateBlinkingState() {
@@ -32,8 +58,8 @@ extension StatusItemController {
         // Use display list so merged-mode visibility stays consistent with shouldMergeIcons.
         let displayProviders = self.store.enabledProvidersForDisplay()
         let anyEnabled = !displayProviders.isEmpty || self.store.debugForceAnimation
-        let anyVisible = UsageProvider.allCases.contains { self.isVisible($0) }
         let mergeIcons = self.shouldMergeIcons
+        let anyVisible = UsageProvider.allCases.contains { self.isVisible($0) }
         let shouldBlink = mergeIcons ? anyEnabled : anyVisible
         if blinkingEnabled, shouldBlink {
             if self.blinkTask == nil {
@@ -67,21 +93,17 @@ extension StatusItemController {
         self.blinkTask = nil
         self.blinkAmounts.removeAll()
         let phase: Double? = self.needsMenuBarIconAnimation() ? self.animationPhase : nil
-        if self.shouldMergeIcons {
-            self.applyIcon(phase: phase)
-        } else {
-            for provider in UsageProvider.allCases {
-                self.applyIcon(for: provider, phase: phase)
-            }
-        }
+        self.applyVisibleIcons(phase: phase)
     }
 
     private func blinkTickSleepDuration(now: Date) -> Duration {
         let mergeIcons = self.shouldMergeIcons
         var nextWakeAt: Date?
 
-        for provider in UsageProvider.allCases {
-            let shouldRender = mergeIcons ? self.isEnabled(provider) : self.isVisible(provider)
+        for provider in self.blinkRenderProviders(mergeIcons: mergeIcons) {
+            let shouldRender = mergeIcons
+                ? self.mergedStatusItemProvidersForDisplay().contains(provider) || self.isVisible(provider)
+                : self.isVisible(provider)
             guard shouldRender, !self.shouldAnimate(provider: provider, mergeIcons: mergeIcons)
             else { continue }
 
@@ -121,7 +143,7 @@ extension StatusItemController {
         // Cache merge state once per tick to avoid repeated enabled-provider lookups.
         let mergeIcons = self.shouldMergeIcons
 
-        for provider in UsageProvider.allCases {
+        for provider in self.blinkRenderProviders(mergeIcons: mergeIcons) {
             let shouldRender = mergeIcons ? self.isEnabled(provider) : self.isVisible(provider)
             guard shouldRender, !self.shouldAnimate(provider: provider, mergeIcons: mergeIcons)
             else {
@@ -231,6 +253,107 @@ extension StatusItemController {
         return false
     }
 
+    private func mergedMenuBarIconMetricBars(phase: Double?) -> [IconRenderer.MergedMetricBar] {
+        let providers = self.mergedMenuBarIconProvidersForDisplay()
+        guard !providers.isEmpty else { return [] }
+        let showUsed = self.settings.usageBarsShowUsed
+        let needsAnimation = self.needsMenuBarIconAnimation()
+        return providers.enumerated().map { index, provider in
+            let snapshot = self.store.snapshot(for: provider)
+            let window = self.menuBarMetricWindow(for: provider, snapshot: snapshot)
+            let animatedPercent: Double? = if let phase, needsAnimation, self.shouldAnimate(provider: provider) {
+                max(
+                    self.animationPattern.value(
+                        phase: phase + Double(index) * self.animationPattern.secondaryOffset),
+                    Self.loadingPercentEpsilon)
+            } else {
+                nil
+            }
+            let percent = animatedPercent ?? window.map {
+                showUsed ? $0.usedPercent : $0.remainingPercent
+            }
+            return IconRenderer.MergedMetricBar(
+                style: self.store.style(for: provider),
+                percent: percent,
+                stale: animatedPercent == nil && self.store.isStale(provider: provider))
+        }
+    }
+
+    private func mergedMenuBarIconStatusIndicator() -> ProviderStatusIndicator {
+        self.mergedMenuBarIconProvidersForDisplay()
+            .map { self.store.statusIndicator(for: $0) }
+            .max(by: { Self.statusIndicatorRank($0) < Self.statusIndicatorRank($1) })
+            ?? .none
+    }
+
+    private static func statusIndicatorRank(_ indicator: ProviderStatusIndicator) -> Int {
+        switch indicator {
+        case .none: 0
+        case .unknown: 1
+        case .maintenance: 2
+        case .minor: 3
+        case .major: 4
+        case .critical: 5
+        }
+    }
+
+    private func mergedMenuBarIconWarningFlashActive() -> Bool {
+        self.mergedMenuBarIconProvidersForDisplay().contains {
+            self.quotaWarningFlashActive(provider: $0)
+        }
+    }
+
+    @discardableResult
+    private func applyMergedMenuBarMetricIcon(
+        providers: [UsageProvider],
+        phase: Double?,
+        button: NSStatusBarButton,
+        needsAnimation: Bool)
+        -> Bool
+    {
+        let metrics = self.mergedMenuBarIconMetricBars(phase: phase)
+        guard !metrics.isEmpty else { return false }
+        self.setButtonTitle(nil, for: button)
+
+        let warningFlash = self.mergedMenuBarIconWarningFlashActive()
+        let statusIndicator = self.mergedMenuBarIconStatusIndicator()
+        let metricSignature = zip(providers, metrics).map { provider, metric in
+            let preference = self.settings.menuBarMetricPreference(
+                for: provider,
+                snapshot: self.store.snapshot(for: provider))
+            return [
+                provider.rawValue,
+                "style=\(metric.style.rawValue)",
+                "percent=\(Self.iconSignatureValue(metric.percent))",
+                "stale=\(metric.stale ? "1" : "0")",
+                "pref=\(preference.rawValue)",
+            ].joined(separator: ":")
+        }.joined(separator: "||")
+        let signature = [
+            "mode=mergedMetrics",
+            "metrics=\(metricSignature)",
+            "showUsed=\(self.settings.usageBarsShowUsed ? "1" : "0")",
+            "status=\(statusIndicator.rawValue)",
+            "warningFlash=\(warningFlash ? "1" : "0")",
+            "anim=\(needsAnimation ? "1" : "0")",
+            "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
+        ].joined(separator: "|")
+        if self.shouldSkipMergedIconRender(signature) {
+            self.noteIconPerfRender(skipped: true)
+            return true
+        }
+
+        let image = IconRenderer.makeMergedMetricIcon(
+            metrics: metrics,
+            statusIndicator: statusIndicator,
+            hideCritters: self.settings.menuBarHidesCritters)
+        self.setButtonImage(
+            warningFlash ? Self.quotaWarningFlashImage(base: image) : image,
+            for: button)
+        self.noteIconPerfRender(skipped: false)
+        return false
+    }
+
     @discardableResult
     func applyIcon(
         phase: Double?,
@@ -240,9 +363,18 @@ extension StatusItemController {
         if !bypassMergedMenuTrackingDeferral,
            self.deferMergedIconRenderDuringMenuTrackingIfNeeded() { return true }
 
-        let style = self.store.iconStyle
+        let style = self.mergedIconStyle()
         let showUsed = self.settings.usageBarsShowUsed
         let showBrandPercent = self.settings.menuBarShowsBrandIconWithPercent
+        let mergedMetricProviders = self.mergedMenuBarIconProvidersForDisplay()
+        let needsAnimation = self.needsMenuBarIconAnimation()
+        if !mergedMetricProviders.isEmpty {
+            return self.applyMergedMenuBarMetricIcon(
+                providers: mergedMetricProviders,
+                phase: phase,
+                button: button,
+                needsAnimation: needsAnimation)
+        }
         let primaryProvider = self.primaryProviderForUnifiedIcon()
         let snapshot = self.store.snapshot(for: primaryProvider)
         let warningFlash = self.quotaWarningFlashActive(provider: primaryProvider)
@@ -262,7 +394,6 @@ extension StatusItemController {
         var stale = self.store.isStale(provider: primaryProvider)
         var morphProgress: Double?
 
-        let needsAnimation = self.needsMenuBarIconAnimation()
         if let phase, needsAnimation {
             var pattern = self.animationPattern
             if style == .combined, pattern == .unbraid {
@@ -981,17 +1112,20 @@ extension StatusItemController {
     }
 
     func primaryProviderForUnifiedIcon() -> UsageProvider {
+        let mergedProviders = self.shouldMergeIcons
+            ? self.mergedStatusItemProvidersForDisplay()
+            : self.store.enabledProvidersForDisplay()
+        let mergedProviderSet = Set(mergedProviders)
         // When "show highest usage" is enabled, auto-select the provider closest to rate limit.
         if self.settings.menuBarShowsHighestUsage,
            self.shouldMergeIcons,
-           let highest = self.store.providerWithHighestUsage()
+           let highest = self.store.providerWithHighestUsage(candidates: mergedProviders)
         {
             return highest.provider
         }
         if self.shouldMergeIcons, self.settings.mergedMenuLastSelectedWasOverview {
-            let enabledProviders = self.store.enabledProvidersForDisplay()
             let overviewProviders = self.settings.resolvedMergedOverviewProviders(
-                activeProviders: enabledProviders,
+                activeProviders: mergedProviders,
                 maxVisibleProviders: SettingsStore.mergedOverviewProviderLimit)
             if let provider = overviewProviders.first(where: { self.store.isEnabled($0) }) {
                 return provider
@@ -999,19 +1133,23 @@ extension StatusItemController {
         }
         if self.shouldMergeIcons,
            let selected = self.selectedMenuProvider,
+           mergedProviderSet.contains(selected),
            self.store.isEnabled(selected)
         {
             return selected
         }
-        for provider in self.store.enabledProviders() {
+        for provider in self.store.enabledProviders() where mergedProviderSet.contains(provider) {
             if self.store.isEnabled(provider), self.store.snapshot(for: provider) != nil {
                 return provider
             }
         }
         // Use availability-filtered list: fallback must pick a provider that can
         // actually animate, otherwise shouldAnimate() fails on credential-less providers.
-        if let enabled = self.store.enabledProviders().first {
+        if let enabled = self.store.enabledProviders().first(where: { mergedProviderSet.contains($0) }) {
             return enabled
+        }
+        if let displayProvider = mergedProviders.first {
+            return displayProvider
         }
         return .codex
     }
@@ -1028,9 +1166,11 @@ extension StatusItemController {
         self.blinkForceUntil = now.addingTimeInterval(0.6)
         self.seedBlinkStatesIfNeeded()
 
-        for provider in UsageProvider.allCases {
+        let mergeIcons = self.shouldMergeIcons
+        for provider in self.blinkRenderProviders(mergeIcons: mergeIcons) {
             let shouldBlink =
-                self.shouldMergeIcons ? self.isEnabled(provider) : self.isVisible(provider)
+                mergeIcons ? self.isEnabled(provider)
+                : self.isVisible(provider)
             guard shouldBlink, !self.shouldAnimate(provider: provider) else { continue }
             var state =
                 self
@@ -1105,11 +1245,7 @@ extension StatusItemController {
         self.animationDriver = nil
         self.animationPhase = 0
         self.animationStartedAt = nil
-        if self.shouldMergeIcons {
-            self.applyIcon(phase: nil)
-        } else {
-            UsageProvider.allCases.forEach { self.applyIcon(for: $0, phase: nil) }
-        }
+        self.applyVisibleIcons(phase: nil)
     }
 
     private func updateAnimationFrame() {
@@ -1123,11 +1259,7 @@ extension StatusItemController {
             return
         }
         self.animationPhase += Self.loadingAnimationPhaseIncrement
-        if self.shouldMergeIcons {
-            self.applyIcon(phase: self.animationPhase)
-        } else {
-            UsageProvider.allCases.forEach { self.applyIcon(for: $0, phase: self.animationPhase) }
-        }
+        self.applyVisibleIcons(phase: self.animationPhase)
     }
 
     nonisolated static func brandImageWithStatusOverlay(

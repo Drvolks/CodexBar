@@ -51,6 +51,33 @@ struct SettingsStoreCoverageTests {
     }
 
     @Test
+    func `merged menu bar icon providers persist normalize and migrate legacy separate icons`() throws {
+        let suite = "SettingsStoreCoverageTests-merged-icon-bars"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(["claude", "codex"], forKey: "separateMenuBarIconProviders")
+        let configStore = testConfigStore(suiteName: suite)
+        let first = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
+
+        #expect(first.mergedMenuBarIconProviders == [.claude, .codex])
+
+        first.mergedMenuBarIconProviders = [.claude, .codex, .minimax, .gemini, .claude]
+
+        #expect(first.mergedMenuBarIconProviders == [.claude, .codex, .minimax])
+        #expect(defaults.array(forKey: "mergedMenuBarIconProviders") as? [String] == [
+            "claude",
+            "codex",
+            "minimax",
+        ])
+
+        let second = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
+        #expect(second.mergedMenuBarIconProviders == [.claude, .codex, .minimax])
+
+        second.setMergedMenuBarIconProvider(.claude, isSelected: false)
+        #expect(second.mergedMenuBarIconProviders == [.codex, .minimax])
+    }
+
+    @Test
     func `menu bar metric preferences and display modes`() {
         let settings = Self.makeSettingsStore()
 

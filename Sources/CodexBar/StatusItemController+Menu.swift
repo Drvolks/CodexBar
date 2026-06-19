@@ -57,8 +57,10 @@ extension StatusItemController {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        guard self.shouldMergeIcons, menu === self.mergedMenu else { return }
-        self.refreshMenuForOpenIfNeeded(menu, provider: self.resolvedMenuProvider())
+        guard self.isMergedMenu(menu) else { return }
+        self.refreshMenuForOpenIfNeeded(
+            menu,
+            provider: self.resolvedMenuProvider(enabledProviders: self.mergedStatusItemProvidersForDisplay()))
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -97,8 +99,9 @@ extension StatusItemController {
         }
 
         var provider: UsageProvider?
-        if self.shouldMergeIcons {
-            let resolvedProvider = self.resolvedMenuProvider()
+        if self.isMergedMenu(menu) {
+            let resolvedProvider = self.resolvedMenuProvider(
+                enabledProviders: self.mergedStatusItemProvidersForDisplay())
             self.lastMenuProvider = resolvedProvider ?? .codex
             provider = resolvedProvider
         } else {
@@ -211,9 +214,12 @@ extension StatusItemController {
         defer { self.endMenuOperationTrace(trace, menu: menu, provider: provider) }
         defer { self.refreshMenuCardHeights(in: menu) }
 
-        let enabledProviders = self.store.enabledProvidersForDisplay()
-        let includesOverview = self.includesOverviewTab(enabledProviders: enabledProviders)
-        let switcherSelection = self.shouldMergeIcons && enabledProviders.count > 1
+        let isMergedMenu = self.isMergedMenu(menu)
+        let enabledProviders = isMergedMenu
+            ? self.mergedStatusItemProvidersForDisplay()
+            : self.store.enabledProvidersForDisplay()
+        let includesOverview = isMergedMenu && self.includesOverviewTab(enabledProviders: enabledProviders)
+        let switcherSelection = isMergedMenu && enabledProviders.count > 1
             ? self.resolvedSwitcherSelection(
                 enabledProviders: enabledProviders,
                 includesOverview: includesOverview)
@@ -265,7 +271,7 @@ extension StatusItemController {
         let providerSwitcherWidthMatches = (menu.items.first?.view as? ProviderSwitcherView).map { view in
             abs(view.frame.width - menuWidth) <= 0.5
         } ?? false
-        let canSmartUpdate = self.shouldMergeIcons &&
+        let canSmartUpdate = isMergedMenu &&
             enabledProviders.count > 1 &&
             !isOverviewSelected &&
             switcherProvidersMatch &&
@@ -306,7 +312,7 @@ extension StatusItemController {
             return
         }
 
-        let canPreserveProviderSwitcher = self.shouldMergeIcons &&
+        let canPreserveProviderSwitcher = isMergedMenu &&
             enabledProviders.count > 1 &&
             switcherProvidersMatch &&
             switcherUsageBarsShowUsedMatch &&
@@ -392,20 +398,22 @@ extension StatusItemController {
             defer { self.clearMenuCardViewRecyclePool() }
             menu.removeAllItems()
             let contentSelection = context.switcherSelection ?? .provider(context.currentProvider)
-            self.addProviderSwitcherIfNeeded(
-                to: menu,
-                enabledProviders: context.enabledProviders,
-                includesOverview: context.includesOverview,
-                selection: context.switcherSelection ?? .provider(context.currentProvider),
-                width: context.menuWidth)
+            if let switcherSelection = context.switcherSelection {
+                self.addProviderSwitcherIfNeeded(
+                    to: menu,
+                    enabledProviders: context.enabledProviders,
+                    includesOverview: context.includesOverview,
+                    selection: switcherSelection,
+                    width: context.menuWidth)
+            }
             // Track which providers the switcher was built with for smart update detection
-            if self.shouldMergeIcons, context.enabledProviders.count > 1 {
+            if context.switcherSelection != nil, context.enabledProviders.count > 1 {
                 self.rememberMergedSwitcherState(
                     context.enabledProviders,
                     context.switcherSelection,
                     context.includesOverview)
             }
-            if self.shouldMergeIcons,
+            if context.switcherSelection != nil,
                context.enabledProviders.count > 1,
                self.addCachedMergedSwitcherContent(
                    for: contentSelection,
@@ -1000,7 +1008,8 @@ extension StatusItemController {
                     switch selection {
                     case .overview:
                         self.settings.mergedMenuLastSelectedWasOverview = true
-                        provider = self.resolvedMenuProvider()
+                        provider = self.resolvedMenuProvider(
+                            enabledProviders: self.mergedStatusItemProvidersForDisplay())
                     case let .provider(selectedProvider):
                         self.settings.mergedMenuLastSelectedWasOverview = false
                         self.selectedMenuProvider = selectedProvider
@@ -1040,7 +1049,7 @@ extension StatusItemController {
                 self.store.activateCachedTokenAccountSnapshot(
                     provider: display.provider,
                     accountID: selectedAccount.id)
-                self.applyIcon(phase: nil)
+                self.applyVisibleIcons(phase: nil)
                 self.deferSwitcherMenuRebuildIfStillVisible(menu, provider: display.provider)
                 return Task { @MainActor [weak self, weak menu] in
                     guard let self else { return }
@@ -1101,7 +1110,10 @@ extension StatusItemController {
     }
 
     func resolvedMenuProvider(enabledProviders: [UsageProvider]? = nil) -> UsageProvider? {
-        let enabled = enabledProviders ?? self.store.enabledProvidersForDisplay()
+        let enabled = enabledProviders ??
+            (self.shouldMergeIcons
+                ? self.mergedStatusItemProvidersForDisplay()
+                : self.store.enabledProvidersForDisplay())
         if enabled.isEmpty { return .codex }
         if let selected = self.selectedMenuProvider, enabled.contains(selected) {
             return selected
@@ -1128,11 +1140,14 @@ extension StatusItemController {
     }
 
     func menuProvider(for menu: NSMenu) -> UsageProvider? {
-        if self.shouldMergeIcons {
-            return self.resolvedMenuProvider()
-        }
         if let provider = self.menuProviders[ObjectIdentifier(menu)] {
             return provider
+        }
+        if self.isMergedMenu(menu) {
+            return self.resolvedMenuProvider(enabledProviders: self.mergedStatusItemProvidersForDisplay())
+        }
+        if self.shouldMergeIcons {
+            return self.resolvedMenuProvider(enabledProviders: self.mergedStatusItemProvidersForDisplay())
         }
         if menu === self.fallbackMenu {
             return nil
@@ -1217,11 +1232,18 @@ extension StatusItemController {
     }
 
     func renderedProviders(for menu: NSMenu) -> [UsageProvider] {
-        let enabledProviders = self.store.enabledProvidersForDisplay()
+        if let provider = self.menuProviders[ObjectIdentifier(menu)] {
+            return [provider]
+        }
+
+        let enabledProviders = self.isMergedMenu(menu)
+            ? self.mergedStatusItemProvidersForDisplay()
+            : self.store.enabledProvidersForDisplay()
         guard !enabledProviders.isEmpty else { return [] }
         let includesOverview = self.includesOverviewTab(enabledProviders: enabledProviders)
 
         if self.shouldMergeIcons,
+           self.isMergedMenu(menu),
            enabledProviders.count > 1,
            self.resolvedSwitcherSelection(
                enabledProviders: enabledProviders,

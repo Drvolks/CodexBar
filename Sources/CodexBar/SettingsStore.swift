@@ -132,6 +132,7 @@ enum CodexAccountMenuProjectionRevalidationResult: Equatable {
 final class SettingsStore {
     static let sharedDefaults = AppGroupSupport.sharedDefaults()
     static let mergedOverviewProviderLimit = 3
+    static let mergedMenuBarIconProviderLimit = 3
     static let productionCodexAccountReconciliationSnapshotCacheInterval: TimeInterval = 2
     static let isRunningTests: Bool = {
         let env = ProcessInfo.processInfo.environment
@@ -408,6 +409,12 @@ extension SettingsStore {
             forKey: "mergedMenuLastSelectedWasOverview") as? Bool ?? false
         let mergedOverviewSelectedProvidersRaw = userDefaults.array(
             forKey: "mergedOverviewSelectedProviders") as? [String] ?? []
+        let storedMergedMenuBarIconProviders =
+            userDefaults.array(forKey: "mergedMenuBarIconProviders") as? [String]
+        let legacySeparateMenuBarIconProviders =
+            userDefaults.array(forKey: "separateMenuBarIconProviders") as? [String]
+        let mergedMenuBarIconProvidersRaw =
+            storedMergedMenuBarIconProviders ?? legacySeparateMenuBarIconProviders ?? []
         let selectedMenuProviderRaw = userDefaults.string(forKey: "selectedMenuProvider")
         let providerDetectionCompleted = userDefaults.object(forKey: "providerDetectionCompleted") as? Bool ?? false
         let appLanguageRaw = userDefaults.string(forKey: "appLanguage")
@@ -461,6 +468,7 @@ extension SettingsStore {
             switcherShowsIcons: switcherShowsIcons,
             mergedMenuLastSelectedWasOverview: mergedMenuLastSelectedWasOverview,
             mergedOverviewSelectedProvidersRaw: mergedOverviewSelectedProvidersRaw,
+            mergedMenuBarIconProvidersRaw: mergedMenuBarIconProvidersRaw,
             selectedMenuProviderRaw: selectedMenuProviderRaw,
             providerDetectionCompleted: providerDetectionCompleted,
             appLanguageRaw: appLanguageRaw,
