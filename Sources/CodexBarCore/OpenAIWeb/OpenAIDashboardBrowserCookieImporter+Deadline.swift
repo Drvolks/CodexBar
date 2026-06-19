@@ -10,6 +10,9 @@ extension OpenAIDashboardBrowserCookieImporter {
     @MainActor private static var pendingCookieStoreMutations: [ObjectIdentifier: PendingCookieStoreMutation] = [:]
     private nonisolated static let cookieCacheQueue = DispatchQueue(
         label: "com.steipete.codexbar.openai-cookie-cache")
+    private nonisolated static let deadlineQueue = DispatchQueue(
+        label: "com.steipete.codexbar.openai-cookie-deadline",
+        qos: .userInitiated)
 
     private final class CookieLoadCompletion: @unchecked Sendable {
         private let lock = NSLock()
@@ -41,6 +44,7 @@ extension OpenAIDashboardBrowserCookieImporter {
 
     nonisolated static func runBoundedCookieLoad<T: Sendable>(
         deadline: Date?,
+        timeoutObserver: (@Sendable () -> Void)? = nil,
         operation: @escaping @Sendable () throws -> T) async throws -> T
     {
         guard let deadline else {
@@ -53,8 +57,11 @@ extension OpenAIDashboardBrowserCookieImporter {
                 let result = Result(catching: operation)
                 completion.finish { continuation.resume(with: result) }
             }
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeout) {
-                completion.finish { continuation.resume(throwing: URLError(.timedOut)) }
+            self.deadlineQueue.asyncAfter(deadline: .now() + timeout) {
+                completion.finish {
+                    timeoutObserver?()
+                    continuation.resume(throwing: URLError(.timedOut))
+                }
             }
         }
     }
@@ -70,6 +77,7 @@ extension OpenAIDashboardBrowserCookieImporter {
 
     static func runBoundedCallback(
         deadline: Date?,
+        timeoutObserver: (@Sendable () -> Void)? = nil,
         start: (@escaping @Sendable () -> Void) -> Void) async throws
     {
         let completion = CookieLoadCompletion()
@@ -87,14 +95,18 @@ extension OpenAIDashboardBrowserCookieImporter {
             start {
                 completion.finish { continuation.resume() }
             }
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeout) {
-                completion.finish { continuation.resume(throwing: URLError(.timedOut)) }
+            self.deadlineQueue.asyncAfter(deadline: .now() + timeout) {
+                completion.finish {
+                    timeoutObserver?()
+                    continuation.resume(throwing: URLError(.timedOut))
+                }
             }
         }
     }
 
     static func runBoundedValueCallback<T: Sendable>(
         deadline: Date?,
+        timeoutObserver: (@Sendable () -> Void)? = nil,
         start: (@escaping @Sendable (T) -> Void) -> Void) async throws -> T
     {
         let completion = CookieLoadCompletion()
@@ -111,8 +123,11 @@ extension OpenAIDashboardBrowserCookieImporter {
             start { value in
                 completion.finish { continuation.resume(returning: value) }
             }
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeout) {
-                completion.finish { continuation.resume(throwing: URLError(.timedOut)) }
+            self.deadlineQueue.asyncAfter(deadline: .now() + timeout) {
+                completion.finish {
+                    timeoutObserver?()
+                    continuation.resume(throwing: URLError(.timedOut))
+                }
             }
         }
     }

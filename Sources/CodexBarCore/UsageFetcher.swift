@@ -117,6 +117,13 @@ public struct ProviderIdentitySnapshot: Codable, Sendable {
     }
 }
 
+public enum UsageDataConfidence: String, Codable, Equatable, Sendable {
+    case exact
+    case estimated
+    case percentOnly
+    case unknown
+}
+
 public struct UsageSnapshot: Codable, Sendable {
     public let primary: RateWindow?
     public let secondary: RateWindow?
@@ -131,6 +138,7 @@ public struct UsageSnapshot: Codable, Sendable {
     public let mimoUsage: MiMoUsageSnapshot?
     public let openRouterUsage: OpenRouterUsageSnapshot?
     public let openAIAPIUsage: OpenAIAPIUsageSnapshot?
+    public let codexResetCredits: CodexRateLimitResetCreditsSnapshot?
     public let claudeAdminAPIUsage: ClaudeAdminAPIUsageSnapshot?
     public let mistralUsage: MistralUsageSnapshot?
     public let deepgramUsage: DeepgramUsageSnapshot?
@@ -140,6 +148,7 @@ public struct UsageSnapshot: Codable, Sendable {
     public let subscriptionRenewsAt: Date?
     public let updatedAt: Date
     public let identity: ProviderIdentitySnapshot?
+    public let dataConfidence: UsageDataConfidence
 
     private enum CodingKeys: String, CodingKey {
         case primary
@@ -152,6 +161,7 @@ public struct UsageSnapshot: Codable, Sendable {
         case mimoUsage
         case openRouterUsage
         case openAIAPIUsage
+        case codexResetCredits
         case claudeAdminAPIUsage
         case mistralUsage
         case deepgramUsage
@@ -160,6 +170,7 @@ public struct UsageSnapshot: Codable, Sendable {
         case subscriptionRenewsAt
         case updatedAt
         case identity
+        case dataConfidence
         case accountEmail
         case accountOrganization
         case loginMethod
@@ -179,6 +190,7 @@ public struct UsageSnapshot: Codable, Sendable {
         mimoUsage: MiMoUsageSnapshot? = nil,
         openRouterUsage: OpenRouterUsageSnapshot? = nil,
         openAIAPIUsage: OpenAIAPIUsageSnapshot? = nil,
+        codexResetCredits: CodexRateLimitResetCreditsSnapshot? = nil,
         claudeAdminAPIUsage: ClaudeAdminAPIUsageSnapshot? = nil,
         mistralUsage: MistralUsageSnapshot? = nil,
         deepgramUsage: DeepgramUsageSnapshot? = nil,
@@ -187,7 +199,8 @@ public struct UsageSnapshot: Codable, Sendable {
         subscriptionExpiresAt: Date? = nil,
         subscriptionRenewsAt: Date? = nil,
         updatedAt: Date,
-        identity: ProviderIdentitySnapshot? = nil)
+        identity: ProviderIdentitySnapshot? = nil,
+        dataConfidence: UsageDataConfidence = .unknown)
     {
         self.primary = primary
         self.secondary = secondary
@@ -202,6 +215,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.mimoUsage = mimoUsage
         self.openRouterUsage = openRouterUsage
         self.openAIAPIUsage = openAIAPIUsage
+        self.codexResetCredits = codexResetCredits
         self.claudeAdminAPIUsage = claudeAdminAPIUsage
         self.mistralUsage = mistralUsage
         self.deepgramUsage = deepgramUsage
@@ -211,10 +225,15 @@ public struct UsageSnapshot: Codable, Sendable {
         self.subscriptionRenewsAt = subscriptionRenewsAt
         self.updatedAt = updatedAt
         self.identity = identity
+        self.dataConfidence = dataConfidence
     }
 
     public func with(extraRateWindows: [NamedRateWindow]?) -> UsageSnapshot {
         self.replacing(extraRateWindows: .value(extraRateWindows))
+    }
+
+    public func withCodexResetCredits(_ resetCredits: CodexRateLimitResetCreditsSnapshot?) -> UsageSnapshot {
+        self.replacing(codexResetCredits: .value(resetCredits))
     }
 
     public func with(primary: RateWindow?, secondary: RateWindow?) -> UsageSnapshot {
@@ -238,6 +257,9 @@ public struct UsageSnapshot: Codable, Sendable {
         self.mimoUsage = try container.decodeIfPresent(MiMoUsageSnapshot.self, forKey: .mimoUsage)
         self.openRouterUsage = try container.decodeIfPresent(OpenRouterUsageSnapshot.self, forKey: .openRouterUsage)
         self.openAIAPIUsage = try container.decodeIfPresent(OpenAIAPIUsageSnapshot.self, forKey: .openAIAPIUsage)
+        self.codexResetCredits = try container.decodeIfPresent(
+            CodexRateLimitResetCreditsSnapshot.self,
+            forKey: .codexResetCredits)
         self.claudeAdminAPIUsage = try container.decodeIfPresent(
             ClaudeAdminAPIUsageSnapshot.self,
             forKey: .claudeAdminAPIUsage)
@@ -248,6 +270,11 @@ public struct UsageSnapshot: Codable, Sendable {
         self.subscriptionExpiresAt = try container.decodeIfPresent(Date.self, forKey: .subscriptionExpiresAt)
         self.subscriptionRenewsAt = try container.decodeIfPresent(Date.self, forKey: .subscriptionRenewsAt)
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        if let dataConfidence = try container.decodeIfPresent(String.self, forKey: .dataConfidence) {
+            self.dataConfidence = UsageDataConfidence(rawValue: dataConfidence) ?? .unknown
+        } else {
+            self.dataConfidence = .unknown
+        }
         if let identity = try container.decodeIfPresent(ProviderIdentitySnapshot.self, forKey: .identity) {
             self.identity = identity
         } else {
@@ -279,6 +306,7 @@ public struct UsageSnapshot: Codable, Sendable {
         try container.encodeIfPresent(self.mimoUsage, forKey: .mimoUsage)
         try container.encodeIfPresent(self.openRouterUsage, forKey: .openRouterUsage)
         try container.encodeIfPresent(self.openAIAPIUsage, forKey: .openAIAPIUsage)
+        try container.encodeIfPresent(self.codexResetCredits, forKey: .codexResetCredits)
         try container.encodeIfPresent(self.claudeAdminAPIUsage, forKey: .claudeAdminAPIUsage)
         try container.encodeIfPresent(self.mistralUsage, forKey: .mistralUsage)
         try container.encodeIfPresent(self.deepgramUsage, forKey: .deepgramUsage)
@@ -287,6 +315,9 @@ public struct UsageSnapshot: Codable, Sendable {
         try container.encodeIfPresent(self.subscriptionRenewsAt, forKey: .subscriptionRenewsAt)
         try container.encode(self.updatedAt, forKey: .updatedAt)
         try container.encodeIfPresent(self.identity, forKey: .identity)
+        if self.dataConfidence != .unknown {
+            try container.encode(self.dataConfidence, forKey: .dataConfidence)
+        }
         try container.encodeIfPresent(self.identity?.accountEmail, forKey: .accountEmail)
         try container.encodeIfPresent(self.identity?.accountOrganization, forKey: .accountOrganization)
         try container.encodeIfPresent(self.identity?.loginMethod, forKey: .loginMethod)
@@ -374,6 +405,10 @@ public struct UsageSnapshot: Codable, Sendable {
         self.replacing(identity: .value(identity))
     }
 
+    public func withDataConfidence(_ dataConfidence: UsageDataConfidence) -> UsageSnapshot {
+        self.replacing(dataConfidence: .value(dataConfidence))
+    }
+
     public func scoped(to provider: UsageProvider) -> UsageSnapshot {
         guard let identity else { return self }
         let scopedIdentity = identity.scoped(to: provider)
@@ -431,7 +466,9 @@ public struct UsageSnapshot: Codable, Sendable {
         secondary: Replacement<RateWindow?> = .unchanged,
         tertiary: Replacement<RateWindow?> = .unchanged,
         extraRateWindows: Replacement<[NamedRateWindow]?> = .unchanged,
-        identity: Replacement<ProviderIdentitySnapshot?> = .unchanged) -> UsageSnapshot
+        codexResetCredits: Replacement<CodexRateLimitResetCreditsSnapshot?> = .unchanged,
+        identity: Replacement<ProviderIdentitySnapshot?> = .unchanged,
+        dataConfidence: Replacement<UsageDataConfidence> = .unchanged) -> UsageSnapshot
     {
         UsageSnapshot(
             primary: primary.resolving(self.primary),
@@ -447,6 +484,7 @@ public struct UsageSnapshot: Codable, Sendable {
             mimoUsage: self.mimoUsage,
             openRouterUsage: self.openRouterUsage,
             openAIAPIUsage: self.openAIAPIUsage,
+            codexResetCredits: codexResetCredits.resolving(self.codexResetCredits),
             claudeAdminAPIUsage: self.claudeAdminAPIUsage,
             mistralUsage: self.mistralUsage,
             deepgramUsage: self.deepgramUsage,
@@ -455,7 +493,8 @@ public struct UsageSnapshot: Codable, Sendable {
             subscriptionExpiresAt: self.subscriptionExpiresAt,
             subscriptionRenewsAt: self.subscriptionRenewsAt,
             updatedAt: self.updatedAt,
-            identity: identity.resolving(self.identity))
+            identity: identity.resolving(self.identity),
+            dataConfidence: dataConfidence.resolving(self.dataConfidence))
     }
 }
 

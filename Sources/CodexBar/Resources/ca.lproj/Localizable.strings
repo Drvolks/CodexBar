@@ -617,6 +617,8 @@
 "metric_pref_tertiary" = "Terciari";
 "metric_pref_extra_usage" = "Ús addicional";
 "metric_pref_average" = "Mitjana";
+"metric_mistral_payg" = "Pay-as-you-go";
+"metric_mistral_monthly_plan" = "Monthly Plan";
 
 /* Display modes */
 "display_mode_percent" = "Percentatge";
@@ -688,6 +690,7 @@
 "API spend" = "Despesa d'API";
 "Extra usage" = "Ús addicional";
 "Quota usage" = "Ús de quota";
+"Your spend" = "La teva despesa";
 "%.0f%% used" = "%.0f%% usat";
 "Usage history (today)" = "Historial d'ús (avui)";
 "Usage history (%d days)" = "Historial d'ús (%d dies)";
@@ -828,6 +831,9 @@
 "Day" = "Dia";
 "Deployment" = "Desplegament";
 "Drag to reorder" = "Arrossega per reordenar";
+"Sort providers alphabetically" = "Ordena els proveïdors alfabèticament";
+"Sort providers alphabetically (enabled first)" = "Ordena els proveïdors alfabèticament (els activats primer)";
+"Sorted alphabetically (enabled first) — click to use your custom order" = "Ordenats alfabèticament (els activats primer) — fes clic per utilitzar l’ordre personalitzat";
 "Endpoint" = "Endpoint";
 "Enterprise host" = "Host Enterprise";
 "Extra usage balance: %@" = "Saldo d'ús extra: %@";
@@ -942,3 +948,18 @@
 "language_arabic" = "العربية";
 "language_persian" = "فارسی";
 "language_thai" = "ไทย";
+"Limit Reset Credits" = "Crèdits de restabliment del límit";
+"1 manual reset available" = "Hi ha 1 restabliment manual disponible";
+"%d manual resets available" = "Hi ha %d restabliments manuals disponibles";
+"Next expires %@" = "El següent caduca %@";
+"Other (%d items)" = "Altres (%d elements)";
+"Expand" = "Amplia";
+"Collapse" = "Redueix";
+"byte_unit_byte" = "byte";
+"byte_unit_bytes" = "bytes";
+"byte_unit_kilobyte" = "quilobyte";
+"byte_unit_kilobytes" = "quilobytes";
+"byte_unit_megabyte" = "megabyte";
+"byte_unit_megabytes" = "megabytes";
+"byte_unit_gigabyte" = "gigabyte";
+"byte_unit_gigabytes" = "gigabytes";

@@ -376,6 +376,7 @@ extension StatusItemController {
                 needsAnimation: needsAnimation)
         }
         let primaryProvider = self.primaryProviderForUnifiedIcon()
+        let resolverStyle = self.store.style(for: primaryProvider)
         let snapshot = self.store.snapshot(for: primaryProvider)
         let warningFlash = self.quotaWarningFlashActive(provider: primaryProvider)
 
@@ -384,8 +385,9 @@ extension StatusItemController {
         let resolved = snapshot.map {
             IconRemainingResolver.resolvedPercents(
                 snapshot: $0,
-                style: style,
+                style: resolverStyle,
                 showUsed: showUsed,
+                renderingStyle: style,
                 secondaryOverrideWindowID: self.settings.copilotIconSecondaryWindowOverrideID(snapshot: $0))
         }
         var primary = resolved?.primary
@@ -831,10 +833,14 @@ extension StatusItemController {
         {
             return balance
         }
-        if provider == .mistral,
-           let spend = Self.mistralSpendDisplayText(snapshot: snapshot)
-        {
-            return spend
+        if provider == .mistral {
+            let preference = self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot)
+            let hasMonthlyWindow = snapshot?.extraRateWindows?.contains { $0.id == "mistral-monthly-plan" } == true
+            if preference != .monthlyPlan || !hasMonthlyWindow,
+               let spend = Self.mistralSpendDisplayText(snapshot: snapshot)
+            {
+                return spend
+            }
         }
         if provider == .kimik2,
            let credits = Self.kimiK2CreditsDisplayText(snapshot: snapshot)
