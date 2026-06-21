@@ -5,10 +5,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${ROOT_DIR}/.build/lint-tools/bin"
 
-ensure_tools() {
-  # Always delegate to the installer so pinned versions are enforced.
-  # The installer is idempotent and exits early when the expected versions are already present.
-  "${ROOT_DIR}/Scripts/install_lint_tools.sh"
+ensure_swiftformat() {
+  "${ROOT_DIR}/Scripts/install_lint_tools.sh" swiftformat
+}
+
+ensure_swiftlint() {
+  "${ROOT_DIR}/Scripts/install_lint_tools.sh" swiftlint
 }
 
 check_codex_parser_hash() {
@@ -17,6 +19,10 @@ check_codex_parser_hash() {
 
 check_package_product_paths() {
   "${ROOT_DIR}/Scripts/test_package_product_paths.sh"
+}
+
+check_package_strip() {
+  "${ROOT_DIR}/Scripts/test_package_strip.sh"
 }
 
 check_release_dsym_paths() {
@@ -31,6 +37,10 @@ check_swift_test_sharding() {
   "${ROOT_DIR}/Scripts/test_swift_test_sharding.sh"
 }
 
+check_ci_path_gate() {
+  "${ROOT_DIR}/Scripts/test_ci_path_gate.sh"
+}
+
 check_app_locales() {
   node "${ROOT_DIR}/Scripts/check-app-locales.mjs" --test
   node "${ROOT_DIR}/Scripts/check-app-locales.mjs"
@@ -41,21 +51,29 @@ check_site_locales() {
   node --check "${ROOT_DIR}/docs/site.js"
 }
 
+check_documentation_links() {
+  node "${ROOT_DIR}/Scripts/check-documentation-links.mjs"
+}
+
 run_portable_checks() {
   check_codex_parser_hash
   check_package_product_paths
+  check_package_strip
   check_release_dsym_paths
   check_sparkle_signing_paths
   check_swift_test_sharding
+  check_ci_path_gate
+  check_documentation_links
   check_site_locales
-  ensure_tools
 }
 
 run_swiftformat_lint() {
+  ensure_swiftformat
   "${BIN_DIR}/swiftformat" Sources Tests --lint
 }
 
 run_swiftlint() {
+  ensure_swiftlint
   "${BIN_DIR}/swiftlint" --strict
 }
 
@@ -74,11 +92,10 @@ case "$cmd" in
     ;;
   lint-macos)
     check_app_locales
-    ensure_tools
     run_swiftformat_lint
     ;;
   format)
-    ensure_tools
+    ensure_swiftformat
     "${BIN_DIR}/swiftformat" Sources Tests
     ;;
   *)
