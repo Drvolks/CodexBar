@@ -16,8 +16,8 @@ extension StatusItemController {
 
     func mergedMenuBarIconProvidersForDisplay() -> [UsageProvider] {
         guard self.shouldMergeIcons else { return [] }
-        let mergedProviders = Set(self.mergedStatusItemProvidersForDisplay())
-        return self.settings.mergedMenuBarIconProviders.filter { mergedProviders.contains($0) }
+        let selectedProviders = Set(self.settings.mergedMenuBarIconProviders)
+        return self.mergedStatusItemProvidersForDisplay().filter { selectedProviders.contains($0) }
     }
 
     func isMergedMenu(_ menu: NSMenu) -> Bool {

@@ -116,6 +116,18 @@ struct StatusItemControllerSplitLifecycleTests {
     }
 
     @Test
+    func `merged menu bar icon bars follow provider order`() throws {
+        let (settings, controller) = try self.makeSplitController()
+        defer { controller.releaseStatusItemsForTesting() }
+
+        settings.mergedMenuBarIconProviders = [.claude, .codex]
+        settings.mergeIcons = true
+        controller.handleProviderConfigChange(reason: "test")
+
+        #expect(controller.mergedMenuBarIconProvidersForDisplay() == [.codex, .claude])
+    }
+
+    @Test
     func `removing split provider status items clears all menu lifecycle state`() throws {
         let (settings, controller) = try self.makeSplitController()
         defer { controller.releaseStatusItemsForTesting() }
