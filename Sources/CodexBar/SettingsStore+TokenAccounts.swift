@@ -18,6 +18,16 @@ extension SettingsStore {
         return data.accounts[index]
     }
 
+    /// Returns the saved account that currently owns provider fetches and account-scoped state.
+    /// Cursor keeps saved manual credentials when browser login switches back to Automatic, but those credentials
+    /// stay passive until the user explicitly selects one again.
+    func effectiveSelectedTokenAccount(for provider: UsageProvider) -> ProviderTokenAccount? {
+        if provider == .cursor, self.cursorCookieSource == .auto {
+            return nil
+        }
+        return self.selectedTokenAccount(for: provider)
+    }
+
     func setActiveTokenAccountIndex(_ index: Int, for provider: UsageProvider) {
         guard let data = self.tokenAccountsData(for: provider), !data.accounts.isEmpty else { return }
         let clamped = min(max(index, 0), data.accounts.count - 1)
@@ -28,6 +38,7 @@ extension SettingsStore {
         self.updateProviderConfig(provider: provider) { entry in
             entry.tokenAccounts = updated
         }
+        self.applyTokenAccountCookieSourceIfNeeded(provider: provider)
         CodexBarLog.logger(LogCategories.tokenAccounts).info(
             "Active token account updated",
             metadata: [
@@ -41,7 +52,9 @@ extension SettingsStore {
         label: String,
         token: String,
         externalIdentifier: String? = nil,
-        organizationID: String? = nil)
+        usageScope: String? = nil,
+        organizationID: String? = nil,
+        workspaceID: String? = nil)
     {
         guard TokenAccountSupportCatalog.support(for: provider) != nil else { return }
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,8 +62,12 @@ extension SettingsStore {
         let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedIdentifier = externalIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalisedIdentifier = (trimmedIdentifier?.isEmpty ?? true) ? nil : trimmedIdentifier
+        let trimmedUsageScope = usageScope?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalisedUsageScope = (trimmedUsageScope?.isEmpty ?? true) ? nil : trimmedUsageScope
         let trimmedOrganizationID = organizationID?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalisedOrganizationID = (trimmedOrganizationID?.isEmpty ?? true) ? nil : trimmedOrganizationID
+        let trimmedWorkspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalisedWorkspaceID = (trimmedWorkspaceID?.isEmpty ?? true) ? nil : trimmedWorkspaceID
         let existing = self.tokenAccountsData(for: provider)
         let accounts = existing?.accounts ?? []
         let fallbackLabel = trimmedLabel.isEmpty ? "Account \(accounts.count + 1)" : trimmedLabel
@@ -61,7 +78,9 @@ extension SettingsStore {
             addedAt: Date().timeIntervalSince1970,
             lastUsed: nil,
             externalIdentifier: normalisedIdentifier,
-            organizationID: normalisedOrganizationID)
+            usageScope: normalisedUsageScope,
+            organizationID: normalisedOrganizationID,
+            workspaceID: normalisedWorkspaceID)
         let updated = ProviderTokenAccountData(
             version: existing?.version ?? 1,
             accounts: accounts + [account],
@@ -87,7 +106,9 @@ extension SettingsStore {
         label: String? = nil,
         token: String? = nil,
         externalIdentifier: String?? = nil,
-        organizationID: String?? = nil)
+        usageScope: String?? = nil,
+        organizationID: String?? = nil,
+        workspaceID: String?? = nil)
     {
         guard let data = self.tokenAccountsData(for: provider), !data.accounts.isEmpty else { return }
         guard let index = data.accounts.firstIndex(where: { $0.id == accountID }) else { return }
@@ -104,12 +125,26 @@ extension SettingsStore {
         } else {
             resolvedIdentifier = existing.externalIdentifier
         }
+        let resolvedUsageScope: String?
+        if let usageScope {
+            let trimmed = usageScope?.trimmingCharacters(in: .whitespacesAndNewlines)
+            resolvedUsageScope = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        } else {
+            resolvedUsageScope = existing.usageScope
+        }
         let resolvedOrganizationID: String?
         if let organizationID {
             let trimmed = organizationID?.trimmingCharacters(in: .whitespacesAndNewlines)
             resolvedOrganizationID = (trimmed?.isEmpty ?? true) ? nil : trimmed
         } else {
             resolvedOrganizationID = existing.organizationID
+        }
+        let resolvedWorkspaceID: String?
+        if let workspaceID {
+            let trimmed = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            resolvedWorkspaceID = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        } else {
+            resolvedWorkspaceID = existing.workspaceID
         }
         let updatedAccount = ProviderTokenAccount(
             id: existing.id,
@@ -118,7 +153,9 @@ extension SettingsStore {
             addedAt: existing.addedAt,
             lastUsed: existing.lastUsed,
             externalIdentifier: resolvedIdentifier,
-            organizationID: resolvedOrganizationID)
+            usageScope: resolvedUsageScope,
+            organizationID: resolvedOrganizationID,
+            workspaceID: resolvedWorkspaceID)
 
         var accounts = data.accounts
         accounts[index] = updatedAccount

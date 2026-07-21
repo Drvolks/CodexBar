@@ -67,9 +67,7 @@ struct CursorProviderImplementation: ProviderImplementation {
                 isVisible: nil,
                 onChange: nil,
                 trailingText: {
-                    guard let entry = CookieHeaderCache.loadForDisplay(provider: .cursor) else { return nil }
-                    let when = entry.storedAt.relativeDescription()
-                    return "Cached: \(entry.sourceLabel) • \(when)"
+                    ProviderCookieSourceUI.cachedTrailingText(provider: .cursor)
                 }),
         ]
     }
@@ -83,7 +81,6 @@ struct CursorProviderImplementation: ProviderImplementation {
     @MainActor
     func runLoginFlow(context: ProviderLoginContext) async -> Bool {
         await context.controller.runCursorLoginFlow()
-        return true
     }
 
     @MainActor

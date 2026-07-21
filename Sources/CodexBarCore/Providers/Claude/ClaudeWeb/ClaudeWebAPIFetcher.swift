@@ -43,7 +43,9 @@ private actor ClaudeWebBrowserFetchGate {
     private var waiters: [Waiter] = []
 
     func acquire(id: UUID) async -> Bool {
-        if Task.isCancelled { return false }
+        if Task.isCancelled {
+            return false
+        }
         guard self.ownerID != nil else {
             self.ownerID = id
             return true
@@ -54,7 +56,9 @@ private actor ClaudeWebBrowserFetchGate {
     }
 
     func cancel(id: UUID) {
-        if self.ownerID == id { return }
+        if self.ownerID == id {
+            return
+        }
         guard let index = self.waiters.firstIndex(where: { $0.id == id }) else { return }
         let waiter = self.waiters.remove(at: index)
         waiter.continuation.resume(returning: false)
@@ -183,6 +187,12 @@ public enum ClaudeWebAPIFetcher {
         public let accountOrganization: String?
         public let accountEmail: String?
         public let loginMethod: String?
+        /// Whether the API reported a `five_hour` session object. When `false` (the API sent
+        /// `five_hour: null`, as enterprise/credit accounts with no live session do), `sessionPercentUsed`
+        /// is the synthesized `0` placeholder rather than a real reading. Distinguishing this from a real
+        /// session that happens to be at `0%` (with or without a reset) lets lane classifiers drop the
+        /// placeholder without hiding a genuine empty session.
+        public let hasLiveSessionWindow: Bool
 
         public init(
             sessionPercentUsed: Double,
@@ -194,7 +204,8 @@ public enum ClaudeWebAPIFetcher {
             extraUsageCost: ProviderCostSnapshot?,
             accountOrganization: String?,
             accountEmail: String?,
-            loginMethod: String?)
+            loginMethod: String?,
+            hasLiveSessionWindow: Bool = true)
         {
             self.sessionPercentUsed = sessionPercentUsed
             self.sessionResetsAt = sessionResetsAt
@@ -206,6 +217,7 @@ public enum ClaudeWebAPIFetcher {
             self.accountOrganization = accountOrganization
             self.accountEmail = accountEmail
             self.loginMethod = loginMethod
+            self.hasLiveSessionWindow = hasLiveSessionWindow
         }
     }
 
@@ -323,7 +335,8 @@ public enum ClaudeWebAPIFetcher {
                 extraUsageCost: extra,
                 accountOrganization: usage.accountOrganization,
                 accountEmail: usage.accountEmail,
-                loginMethod: usage.loginMethod)
+                loginMethod: usage.loginMethod,
+                hasLiveSessionWindow: usage.hasLiveSessionWindow)
         }
         if let account = await fetchAccountInfo(
             sessionKey: renewalTracker.sessionKey,
@@ -341,7 +354,8 @@ public enum ClaudeWebAPIFetcher {
                 extraUsageCost: usage.extraUsageCost,
                 accountOrganization: usage.accountOrganization,
                 accountEmail: account.email,
-                loginMethod: account.loginMethod)
+                loginMethod: account.loginMethod,
+                hasLiveSessionWindow: usage.hasLiveSessionWindow)
         }
         if usage.accountOrganization == nil, let name = organization.name {
             usage = WebUsageData(
@@ -354,7 +368,8 @@ public enum ClaudeWebAPIFetcher {
                 extraUsageCost: usage.extraUsageCost,
                 accountOrganization: name,
                 accountEmail: usage.accountEmail,
-                loginMethod: usage.loginMethod)
+                loginMethod: usage.loginMethod,
+                hasLiveSessionWindow: usage.hasLiveSessionWindow)
         }
         if let cacheSourceLabel {
             self.persistSessionKeyIfNeeded(
@@ -482,7 +497,9 @@ public enum ClaudeWebAPIFetcher {
         browserDetection: BrowserDetection,
         logger: ((String) -> Void)? = nil) throws -> SessionKeyInfo
     {
-        if let override = ClaudeWebSessionKeyImport.currentOverride { return override }
+        if let override = ClaudeWebSessionKeyImport.currentOverride {
+            return override
+        }
         let log: (String) -> Void = { msg in logger?(msg) }
 
         let cookieDomains = ["claude.ai"]
@@ -601,24 +618,24 @@ public enum ClaudeWebAPIFetcher {
         // Parse five_hour (session) usage
         var sessionPercent: Double?
         var sessionResets: Date?
-        if let fiveHour = json["five_hour"] as? [String: Any] {
-            if let utilization = fiveHour["utilization"] as? Int {
-                sessionPercent = Double(utilization)
-            }
+        let fiveHour = json["five_hour"] as? [String: Any]
+        if let fiveHour {
+            sessionPercent = Self.percentValue(from: fiveHour["utilization"])
             if let resetsAt = fiveHour["resets_at"] as? String {
                 sessionResets = self.parseISO8601Date(resetsAt)
             }
         }
         // Enterprise/credit-based accounts return null for five_hour; treat as 0% rather than an error.
+        // Track the object's presence so a real 0% session (with or without a reset) is not mistaken for
+        // the synthesized null-session placeholder downstream.
         let resolvedSessionPercent = sessionPercent ?? 0.0
+        let hasLiveSessionWindow = fiveHour != nil
 
         // Parse seven_day (weekly) usage
         var weeklyPercent: Double?
         var weeklyResets: Date?
         if let sevenDay = json["seven_day"] as? [String: Any] {
-            if let utilization = sevenDay["utilization"] as? Int {
-                weeklyPercent = Double(utilization)
-            }
+            weeklyPercent = Self.percentValue(from: sevenDay["utilization"])
             if let resetsAt = sevenDay["resets_at"] as? String {
                 weeklyResets = self.parseISO8601Date(resetsAt)
             }
@@ -647,7 +664,8 @@ public enum ClaudeWebAPIFetcher {
             extraUsageCost: extraUsageCost,
             accountOrganization: nil,
             accountEmail: nil,
-            loginMethod: nil)
+            loginMethod: nil,
+            hasLiveSessionWindow: hasLiveSessionWindow)
     }
 
     private static func percentValue(from value: Any?) -> Double? {
@@ -746,6 +764,12 @@ public enum ClaudeWebAPIFetcher {
 
         struct Membership: Decodable {
             let organization: Organization
+            let seatTier: String?
+
+            enum CodingKeys: String, CodingKey {
+                case organization
+                case seatTier = "seat_tier"
+            }
 
             struct Organization: Decodable {
                 let uuid: String?
@@ -794,7 +818,8 @@ public enum ClaudeWebAPIFetcher {
         let membership = Self.selectMembership(response.memberships, orgId: orgId)
         let plan = ClaudePlan.webLoginMethod(
             rateLimitTier: membership?.organization.rateLimitTier,
-            billingType: membership?.organization.billingType)
+            billingType: membership?.organization.billingType,
+            seatTier: membership?.seatTier)
         return WebAccountInfo(email: email, loginMethod: plan)
     }
 
@@ -804,7 +829,9 @@ public enum ClaudeWebAPIFetcher {
     {
         guard let memberships, !memberships.isEmpty else { return nil }
         if let orgId {
-            if let match = memberships.first(where: { $0.organization.uuid == orgId }) { return match }
+            if let match = memberships.first(where: { $0.organization.uuid == orgId }) {
+                return match
+            }
         }
         return memberships.first
     }
@@ -856,7 +883,9 @@ public enum ClaudeWebAPIFetcher {
         regex.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
             guard let match, let r = Range(match.range(at: 0), in: text) else { return }
             let value = String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { results.append(value) }
+            if !value.isEmpty {
+                results.append(value)
+            }
         }
         return Array(Set(results)).sorted()
     }
@@ -869,7 +898,9 @@ public enum ClaudeWebAPIFetcher {
         regex.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
             guard let match, let r = Range(match.range(at: 1), in: text) else { return }
             let value = String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty { results.append(value) }
+            if !value.isEmpty {
+                results.append(value)
+            }
         }
         return Array(Set(results)).sorted()
     }
@@ -885,7 +916,9 @@ public enum ClaudeWebAPIFetcher {
         }
 
         func appendValue(_ keyPath: String, value: Any) {
-            if results.count >= 40 { return }
+            if results.count >= 40 {
+                return
+            }
             let rendered: String
             switch value {
             case let str as String:

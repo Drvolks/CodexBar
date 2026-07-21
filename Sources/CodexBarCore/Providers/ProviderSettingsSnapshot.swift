@@ -25,6 +25,7 @@ public struct ProviderSettingsSnapshot: Sendable {
         copilot: CopilotProviderSettings? = nil,
         kilo: KiloProviderSettings? = nil,
         kimi: KimiProviderSettings? = nil,
+        longcat: LongCatProviderSettings? = nil,
         augment: AugmentProviderSettings? = nil,
         moonshot: MoonshotProviderSettings? = nil,
         amp: AmpProviderSettings? = nil,
@@ -38,6 +39,7 @@ public struct ProviderSettingsSnapshot: Sendable {
         mimo: MiMoProviderSettings? = nil,
         abacus: AbacusProviderSettings? = nil,
         mistral: MistralProviderSettings? = nil,
+        qoder: QoderProviderSettings? = nil,
         stepfun: StepFunProviderSettings? = nil) -> ProviderSettingsSnapshot
     {
         ProviderSettingsSnapshot(
@@ -57,6 +59,7 @@ public struct ProviderSettingsSnapshot: Sendable {
             copilot: copilot,
             kilo: kilo,
             kimi: kimi,
+            longcat: longcat,
             augment: augment,
             moonshot: moonshot,
             amp: amp,
@@ -70,6 +73,7 @@ public struct ProviderSettingsSnapshot: Sendable {
             mimo: mimo,
             abacus: abacus,
             mistral: mistral,
+            qoder: qoder,
             stepfun: stepfun)
     }
 
@@ -177,10 +181,20 @@ public struct ProviderSettingsSnapshot: Sendable {
     public struct AlibabaTokenPlanProviderSettings: ProviderCookieSettings {
         public let cookieSource: ProviderCookieSource
         public let manualCookieHeader: String?
+        public let apiRegion: AlibabaTokenPlanAPIRegion
 
-        public init(cookieSource: ProviderCookieSource = .auto, manualCookieHeader: String? = nil) {
+        public init(
+            cookieSource: ProviderCookieSource = .auto,
+            manualCookieHeader: String? = nil,
+            apiRegion: AlibabaTokenPlanAPIRegion = .international)
+        {
             self.cookieSource = cookieSource
             self.manualCookieHeader = manualCookieHeader
+            self.apiRegion = apiRegion
+        }
+
+        public init(cookieSource: ProviderCookieSource, manualCookieHeader: String?) {
+            self.init(cookieSource: cookieSource, manualCookieHeader: manualCookieHeader, apiRegion: .international)
         }
     }
 
@@ -222,9 +236,17 @@ public struct ProviderSettingsSnapshot: Sendable {
 
     public struct ZaiProviderSettings: Sendable {
         public let apiRegion: ZaiAPIRegion
+        public let usageScope: ZaiUsageScope
+        public let teamContext: ZaiBigModelTeamContext?
 
-        public init(apiRegion: ZaiAPIRegion = .global) {
+        public init(
+            apiRegion: ZaiAPIRegion = .global,
+            usageScope: ZaiUsageScope = .personal,
+            teamContext: ZaiBigModelTeamContext? = nil)
+        {
             self.apiRegion = apiRegion
+            self.usageScope = usageScope
+            self.teamContext = teamContext
         }
     }
 
@@ -264,6 +286,16 @@ public struct ProviderSettingsSnapshot: Sendable {
     }
 
     public struct KimiProviderSettings: ProviderCookieSettings {
+        public let cookieSource: ProviderCookieSource
+        public let manualCookieHeader: String?
+
+        public init(cookieSource: ProviderCookieSource, manualCookieHeader: String?) {
+            self.cookieSource = cookieSource
+            self.manualCookieHeader = manualCookieHeader
+        }
+    }
+
+    public struct LongCatProviderSettings: ProviderCookieSettings {
         public let cookieSource: ProviderCookieSource
         public let manualCookieHeader: String?
 
@@ -407,6 +439,16 @@ public struct ProviderSettingsSnapshot: Sendable {
         }
     }
 
+    public struct QoderProviderSettings: ProviderCookieSettings {
+        public let cookieSource: ProviderCookieSource
+        public let manualCookieHeader: String?
+
+        public init(cookieSource: ProviderCookieSource, manualCookieHeader: String?) {
+            self.cookieSource = cookieSource
+            self.manualCookieHeader = manualCookieHeader
+        }
+    }
+
     public struct StepFunProviderSettings: Sendable {
         public let cookieSource: ProviderCookieSource
         public let manualToken: String
@@ -442,6 +484,7 @@ public struct ProviderSettingsSnapshot: Sendable {
     public let copilot: CopilotProviderSettings?
     public let kilo: KiloProviderSettings?
     public let kimi: KimiProviderSettings?
+    public let longcat: LongCatProviderSettings?
     public let augment: AugmentProviderSettings?
     public let moonshot: MoonshotProviderSettings?
     public let amp: AmpProviderSettings?
@@ -455,6 +498,7 @@ public struct ProviderSettingsSnapshot: Sendable {
     public let mimo: MiMoProviderSettings?
     public let abacus: AbacusProviderSettings?
     public let mistral: MistralProviderSettings?
+    public let qoder: QoderProviderSettings?
     public let stepfun: StepFunProviderSettings?
 
     public var jetbrainsIDEBasePath: String? {
@@ -478,6 +522,7 @@ public struct ProviderSettingsSnapshot: Sendable {
         copilot: CopilotProviderSettings?,
         kilo: KiloProviderSettings?,
         kimi: KimiProviderSettings?,
+        longcat: LongCatProviderSettings? = nil,
         augment: AugmentProviderSettings?,
         moonshot: MoonshotProviderSettings? = nil,
         amp: AmpProviderSettings?,
@@ -491,6 +536,7 @@ public struct ProviderSettingsSnapshot: Sendable {
         mimo: MiMoProviderSettings? = nil,
         abacus: AbacusProviderSettings? = nil,
         mistral: MistralProviderSettings? = nil,
+        qoder: QoderProviderSettings? = nil,
         stepfun: StepFunProviderSettings? = nil)
     {
         self.debugMenuEnabled = debugMenuEnabled
@@ -509,6 +555,7 @@ public struct ProviderSettingsSnapshot: Sendable {
         self.copilot = copilot
         self.kilo = kilo
         self.kimi = kimi
+        self.longcat = longcat
         self.augment = augment
         self.moonshot = moonshot
         self.amp = amp
@@ -522,6 +569,7 @@ public struct ProviderSettingsSnapshot: Sendable {
         self.mimo = mimo
         self.abacus = abacus
         self.mistral = mistral
+        self.qoder = qoder
         self.stepfun = stepfun
     }
 }
@@ -541,6 +589,7 @@ public enum ProviderSettingsSnapshotContribution: Sendable {
     case copilot(ProviderSettingsSnapshot.CopilotProviderSettings)
     case kilo(ProviderSettingsSnapshot.KiloProviderSettings)
     case kimi(ProviderSettingsSnapshot.KimiProviderSettings)
+    case longcat(ProviderSettingsSnapshot.LongCatProviderSettings)
     case augment(ProviderSettingsSnapshot.AugmentProviderSettings)
     case moonshot(ProviderSettingsSnapshot.MoonshotProviderSettings)
     case amp(ProviderSettingsSnapshot.AmpProviderSettings)
@@ -554,6 +603,7 @@ public enum ProviderSettingsSnapshotContribution: Sendable {
     case mimo(ProviderSettingsSnapshot.MiMoProviderSettings)
     case abacus(ProviderSettingsSnapshot.AbacusProviderSettings)
     case mistral(ProviderSettingsSnapshot.MistralProviderSettings)
+    case qoder(ProviderSettingsSnapshot.QoderProviderSettings)
     case stepfun(ProviderSettingsSnapshot.StepFunProviderSettings)
 }
 
@@ -574,6 +624,7 @@ public struct ProviderSettingsSnapshotBuilder: Sendable {
     public var copilot: ProviderSettingsSnapshot.CopilotProviderSettings?
     public var kilo: ProviderSettingsSnapshot.KiloProviderSettings?
     public var kimi: ProviderSettingsSnapshot.KimiProviderSettings?
+    public var longcat: ProviderSettingsSnapshot.LongCatProviderSettings?
     public var augment: ProviderSettingsSnapshot.AugmentProviderSettings?
     public var moonshot: ProviderSettingsSnapshot.MoonshotProviderSettings?
     public var amp: ProviderSettingsSnapshot.AmpProviderSettings?
@@ -587,6 +638,7 @@ public struct ProviderSettingsSnapshotBuilder: Sendable {
     public var mimo: ProviderSettingsSnapshot.MiMoProviderSettings?
     public var abacus: ProviderSettingsSnapshot.AbacusProviderSettings?
     public var mistral: ProviderSettingsSnapshot.MistralProviderSettings?
+    public var qoder: ProviderSettingsSnapshot.QoderProviderSettings?
     public var stepfun: ProviderSettingsSnapshot.StepFunProviderSettings?
 
     public init(debugMenuEnabled: Bool = false, debugKeepCLISessionsAlive: Bool = false) {
@@ -611,6 +663,7 @@ public struct ProviderSettingsSnapshotBuilder: Sendable {
         case let .copilot(value): self.copilot = value
         case let .kilo(value): self.kilo = value
         case let .kimi(value): self.kimi = value
+        case let .longcat(value): self.longcat = value
         case let .augment(value): self.augment = value
         case let .moonshot(value): self.moonshot = value
         case let .amp(value): self.amp = value
@@ -624,6 +677,7 @@ public struct ProviderSettingsSnapshotBuilder: Sendable {
         case let .mimo(value): self.mimo = value
         case let .abacus(value): self.abacus = value
         case let .mistral(value): self.mistral = value
+        case let .qoder(value): self.qoder = value
         case let .stepfun(value): self.stepfun = value
         }
     }
@@ -646,6 +700,7 @@ public struct ProviderSettingsSnapshotBuilder: Sendable {
             copilot: self.copilot,
             kilo: self.kilo,
             kimi: self.kimi,
+            longcat: self.longcat,
             augment: self.augment,
             moonshot: self.moonshot,
             amp: self.amp,
@@ -659,6 +714,7 @@ public struct ProviderSettingsSnapshotBuilder: Sendable {
             mimo: self.mimo,
             abacus: self.abacus,
             mistral: self.mistral,
+            qoder: self.qoder,
             stepfun: self.stepfun)
     }
 }

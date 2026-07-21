@@ -26,18 +26,24 @@ extension UsageStore {
     }
 
     private func makeWidgetSnapshot() -> WidgetSnapshot {
+        let now = Date()
         let enabledProviders = self.enabledProviders()
         let entries = UsageProvider.allCases.compactMap { provider in
-            self.makeWidgetEntry(for: provider)
+            self.makeWidgetEntry(for: provider, now: now)
         }
-        return WidgetSnapshot(entries: entries, enabledProviders: enabledProviders, generatedAt: Date())
+        return WidgetSnapshot(
+            entries: entries,
+            enabledProviders: enabledProviders,
+            usageBarsShowUsed: self.settings.usageBarsShowUsed,
+            generatedAt: now)
     }
 
-    private func makeWidgetEntry(for provider: UsageProvider) -> WidgetSnapshot.ProviderEntry? {
-        guard let snapshot = self.snapshots[provider] else { return nil }
+    private func makeWidgetEntry(for provider: UsageProvider, now: Date) -> WidgetSnapshot.ProviderEntry? {
+        let snapshot = self.snapshots[provider]
+        let storedTokenSnapshot = self.tokenSnapshotForCurrentProviderConfig(for: provider)?.snapshot
+        guard snapshot != nil || (provider == .claude && storedTokenSnapshot != nil) else { return nil }
 
-        let tokenSnapshot = self.tokenSnapshot(fromProviderSnapshot: snapshot, provider: provider) ?? self
-            .tokenSnapshots[provider]
+        let tokenSnapshot = storedTokenSnapshot
         let dailyUsage = tokenSnapshot?.daily.map { entry in
             WidgetSnapshot.DailyUsagePoint(
                 dayKey: entry.date,
@@ -46,15 +52,15 @@ extension UsageStore {
         } ?? []
 
         let tokenUsage = Self.widgetTokenUsageSummary(from: tokenSnapshot, provider: provider)
-        let usageRows = self.widgetUsageRows(provider: provider, snapshot: snapshot)
+        let usageRows = snapshot.map { self.widgetUsageRows(provider: provider, snapshot: $0, now: now) } ?? []
 
         let creditsRemaining: Double?
         let codeReviewRemaining: Double?
-        if provider == .codex {
+        if provider == .codex, let snapshot {
             let projection = self.codexConsumerProjection(
                 surface: .widget,
                 snapshotOverride: snapshot,
-                now: snapshot.updatedAt)
+                now: now)
             let displayOnlyExtrasHidden = projection.dashboardVisibility == .displayOnly
             creditsRemaining = displayOnlyExtrasHidden ? nil : projection.credits?.remaining
             codeReviewRemaining = displayOnlyExtrasHidden ? nil : projection.remainingPercent(for: .codeReview)
@@ -62,29 +68,48 @@ extension UsageStore {
             creditsRemaining = nil
             codeReviewRemaining = nil
         }
+        let providerCost: ProviderCostSnapshot? = if provider == .devin,
+                                                     self.settings.showOptionalCreditsAndExtraUsage
+        {
+            snapshot?.providerCost
+        } else {
+            nil
+        }
 
         return WidgetSnapshot.ProviderEntry(
             provider: provider,
-            updatedAt: snapshot.updatedAt,
-            primary: snapshot.primary,
-            secondary: snapshot.secondary,
-            tertiary: snapshot.tertiary,
+            updatedAt: snapshot?.updatedAt ?? tokenSnapshot?.updatedAt ?? now,
+            primary: snapshot?.primary,
+            secondary: snapshot?.secondary,
+            tertiary: snapshot?.tertiary,
             usageRows: usageRows,
             creditsRemaining: creditsRemaining,
             codeReviewRemainingPercent: codeReviewRemaining,
             tokenUsage: tokenUsage,
-            dailyUsage: dailyUsage)
+            dailyUsage: dailyUsage,
+            providerCost: providerCost)
     }
 
-    private nonisolated static func widgetTokenUsageSummary(
+    nonisolated static func widgetTokenUsageSummary(
         from snapshot: CostUsageTokenSnapshot?,
         provider: UsageProvider) -> WidgetSnapshot.TokenUsageSummary?
     {
         guard let snapshot else { return nil }
         let fallbackTokens = snapshot.daily.compactMap(\.totalTokens).reduce(0, +)
         let monthTokensValue = snapshot.last30DaysTokens ?? (fallbackTokens > 0 ? fallbackTokens : nil)
-        let sessionLabel = provider == .bedrock || provider == .mistral ? "Latest billing day" : "Today"
-        let monthLabel = snapshot.historyLabel ?? (snapshot.historyDays == 1 ? "Today" : "\(snapshot.historyDays)d")
+        let sessionLabel = if provider == .bedrock || provider == .mistral {
+            "Latest billing day"
+        } else if provider == .codex {
+            "Today API est. · not billed"
+        } else {
+            "Today"
+        }
+        let defaultMonthLabel = snapshot.historyDays == 1 ? "Today" : "\(snapshot.historyDays)d"
+        let monthLabel = if provider == .codex {
+            "\(snapshot.historyLabel ?? defaultMonthLabel) API est. · not billed"
+        } else {
+            snapshot.historyLabel ?? defaultMonthLabel
+        }
         return WidgetSnapshot.TokenUsageSummary(
             sessionCostUSD: snapshot.sessionCostUSD,
             sessionTokens: snapshot.sessionTokens,
@@ -92,21 +117,23 @@ extension UsageStore {
             last30DaysTokens: monthTokensValue,
             currencyCode: snapshot.currencyCode,
             sessionLabel: sessionLabel,
-            last30DaysLabel: monthLabel)
+            last30DaysLabel: monthLabel,
+            updatedAt: snapshot.updatedAt)
     }
 
     private func widgetUsageRows(
         provider: UsageProvider,
-        snapshot: UsageSnapshot) -> [WidgetSnapshot.WidgetUsageRowSnapshot]
+        snapshot: UsageSnapshot,
+        now: Date) -> [WidgetSnapshot.WidgetUsageRowSnapshot]
     {
         let metadata = ProviderDefaults.metadata[provider]
         if provider == .codex {
             let projection = self.codexConsumerProjection(
                 surface: .widget,
                 snapshotOverride: snapshot,
-                now: snapshot.updatedAt)
+                now: now)
             return projection.visibleRateLanes.compactMap { lane in
-                guard let window = projection.rateWindow(for: lane) else { return nil }
+                guard let window = projection.sourceRateWindow(for: lane) else { return nil }
                 let title = switch lane {
                 case .session:
                     metadata?.sessionLabel ?? "Session"
@@ -116,7 +143,8 @@ extension UsageStore {
                 return WidgetSnapshot.WidgetUsageRowSnapshot(
                     id: lane.rawValue,
                     title: title,
-                    percentLeft: window.remainingPercent)
+                    percentLeft: window.remainingPercent,
+                    window: window)
             }
         }
         if provider == .antigravity,
@@ -135,8 +163,17 @@ extension UsageStore {
         }
 
         let primaryTitle: String = {
+            // Legacy request-based Cursor plans track a request quota, not the token-based "Total" pool.
+            if provider == .cursor, snapshot.cursorRequests != nil {
+                return "Requests"
+            }
             if provider == .grok,
                let dyn = GrokProviderDescriptor.primaryLabel(window: snapshot.primary)
+            {
+                return dyn
+            }
+            if provider == .doubao,
+               let dyn = DoubaoProviderDescriptor.primaryLabel(window: snapshot.primary)
             {
                 return dyn
             }
@@ -158,6 +195,18 @@ extension UsageStore {
                 id: "tertiary",
                 title: metadata?.opusLabel ?? "Opus",
                 percentLeft: snapshot.tertiary?.remainingPercent))
+        }
+        if provider == .kimi {
+            // Keep persisted widget order stable and include only Kimi's intentional subscription lanes.
+            let kimiWindowIDs = ["kimi-monthly", "kimi-code-7d"]
+            rows.append(contentsOf: kimiWindowIDs.compactMap { id in
+                guard let window = snapshot.extraRateWindows?.first(where: { $0.id == id }), window.usageKnown
+                else { return nil }
+                return WidgetSnapshot.WidgetUsageRowSnapshot(
+                    id: window.id,
+                    title: window.title,
+                    percentLeft: window.window.remainingPercent)
+            })
         }
         return rows.filter { $0.percentLeft != nil }
     }

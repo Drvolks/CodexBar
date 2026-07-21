@@ -26,7 +26,11 @@ public enum MiMoProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .mimo,
                 iconResourceName: "ProviderIcon-mimo",
-                color: ProviderColor(red: 1.0, green: 105 / 255, blue: 0)),
+                color: ProviderColor(red: 1.0, green: 105 / 255, blue: 0),
+                confettiPalette: [
+                    ProviderColor(hex: 0x3D3834),
+                    ProviderColor(hex: 0x736B68),
+                ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
                 noDataMessage: { "Xiaomi MiMo cost summary is not supported." }),
@@ -62,8 +66,15 @@ struct MiMoWebFetchStrategy: ProviderFetchStrategy {
         try await self.fetchFromWeb(context)
     }
 
-    private static func shouldFallbackToLocal(error: Error) -> Bool {
-        if error is MiMoSettingsError { return true }
+    static func shouldFallbackToLocal(error: Error) -> Bool {
+        if let settingsError = error as? MiMoSettingsError {
+            switch settingsError {
+            case .missingCookie, .invalidCookie:
+                return true
+            case .invalidEndpointOverride:
+                return false
+            }
+        }
         guard let mimoError = error as? MiMoUsageError else { return false }
         switch mimoError {
         case .invalidCredentials, .loginRequired: return true

@@ -63,16 +63,45 @@ public enum AlibabaCodingPlanCookieImporter {
         }
     }
 
-    nonisolated(unsafe) static var importSessionOverrideForTesting:
-        ((BrowserDetection, ((String) -> Void)?) throws -> SessionInfo)?
+    #if DEBUG
+    final class ImportSessionOverrideStore: @unchecked Sendable {
+        let importSession: (BrowserDetection, ((String) -> Void)?) throws -> SessionInfo
+
+        init(importSession: @escaping (BrowserDetection, ((String) -> Void)?) throws -> SessionInfo) {
+            self.importSession = importSession
+        }
+    }
+
+    @TaskLocal private static var taskImportSessionOverrideStore: ImportSessionOverrideStore?
+
+    static func withImportSessionOverrideForTesting<T>(
+        _ override: ((BrowserDetection, ((String) -> Void)?) throws -> SessionInfo)?,
+        operation: () throws -> T) rethrows -> T
+    {
+        try self.$taskImportSessionOverrideStore.withValue(override.map(ImportSessionOverrideStore.init)) {
+            try operation()
+        }
+    }
+
+    static func withImportSessionOverrideForTesting<T>(
+        _ override: ((BrowserDetection, ((String) -> Void)?) throws -> SessionInfo)?,
+        operation: () async throws -> T) async rethrows -> T
+    {
+        try await self.$taskImportSessionOverrideStore.withValue(override.map(ImportSessionOverrideStore.init)) {
+            try await operation()
+        }
+    }
+    #endif
 
     public static func importSession(
         browserDetection: BrowserDetection,
         logger: ((String) -> Void)? = nil) throws -> SessionInfo
     {
-        if let override = self.importSessionOverrideForTesting {
+        #if DEBUG
+        if let override = self.taskImportSessionOverrideStore?.importSession {
             return try override(browserDetection, logger)
         }
+        #endif
         let log: (String) -> Void = { msg in logger?("[alibaba-cookie] \(msg)") }
         var accessDeniedHints: [String] = []
         var failureDetails: [String] = []
@@ -364,16 +393,21 @@ enum AlibabaChromiumCookieFallbackImporter {
     }
 
     private static func safeStoragePassword(service: String, account: String) -> String? {
-        let query: [String: Any] = [
+        // The preflight classifies prompt-requiring items as .interactionRequired, but its
+        // .notFound (gate disabled) and .failure outcomes still reach this read. Honor the
+        // access gate and keep the read strictly non-interactive so it can never prompt.
+        guard !KeychainAccessGate.isDisabled else { return nil }
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true,
         ]
+        KeychainNoUIQuery.apply(to: &query)
 
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = KeychainSecurity.copyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }

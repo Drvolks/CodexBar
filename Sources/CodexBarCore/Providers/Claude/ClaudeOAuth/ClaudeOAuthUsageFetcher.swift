@@ -10,13 +10,20 @@ public enum ClaudeOAuthFetchError: LocalizedError, Sendable {
     case serverError(Int, String?)
     case networkError(Error)
 
+    public static let usageRateLimitDescription =
+        "Claude OAuth usage endpoint is rate limited by Anthropic right now. Wait a few minutes, "
+            + "then click Refresh. If it keeps happening, run `claude logout && claude login`, then try again."
+
+    public static func isUsageRateLimitDescription(_ description: String?) -> Bool {
+        description == self.usageRateLimitDescription
+    }
+
     public var errorDescription: String? {
         switch self {
         case .unauthorized:
             return "Claude OAuth request unauthorized. Run `claude` to re-authenticate."
         case .rateLimited:
-            return "Claude OAuth usage endpoint is rate limited by Anthropic right now. Wait a few minutes, "
-                + "then click Refresh. If it keeps happening, run `claude logout && claude login`, then try again."
+            return Self.usageRateLimitDescription
         case .invalidResponse:
             return "Claude OAuth response was invalid."
         case let .serverError(code, body):
@@ -40,8 +47,12 @@ enum ClaudeOAuthUsageFetcher {
     private static let betaHeader = "oauth-2025-04-20"
     private static let fallbackClaudeCodeVersion = "2.1.0"
 
-    static func fetchUsage(accessToken: String) async throws -> OAuthUsageResponse {
-        if let blockedUntil = ClaudeOAuthUsageRateLimitGate.blockedUntil() {
+    static func fetchUsage(
+        accessToken: String,
+        detectClaudeVersion: Bool = true,
+        transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) async throws -> OAuthUsageResponse
+    {
+        if let blockedUntil = ClaudeOAuthUsageRateLimitGate.blockedUntil(accessToken: accessToken) {
             throw ClaudeOAuthFetchError.rateLimited(retryAfter: blockedUntil)
         }
 
@@ -57,23 +68,28 @@ enum ClaudeOAuthUsageFetcher {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // OAuth usage endpoint currently requires the beta header.
         request.setValue(Self.betaHeader, forHTTPHeaderField: "anthropic-beta")
-        request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
+        request.setValue(
+            Self.claudeCodeUserAgent(detectClaudeVersion: detectClaudeVersion),
+            forHTTPHeaderField: "User-Agent")
 
         do {
-            let response = try await ProviderHTTPClient.shared.response(for: request)
+            let response = try await transport.response(for: request)
             let data = response.data
             switch response.statusCode {
             case 200:
                 let usage = try Self.decodeUsageResponse(data)
-                ClaudeOAuthUsageRateLimitGate.recordSuccess()
+                ClaudeOAuthUsageRateLimitGate.recordSuccess(accessToken: accessToken)
                 return usage
             case 401:
                 throw ClaudeOAuthFetchError.unauthorized
             case 429:
                 let retryAfter = Self.retryAfterDate(from: response.response)
-                ClaudeOAuthUsageRateLimitGate.recordRateLimit(retryAfter: retryAfter)
+                ClaudeOAuthUsageRateLimitGate.recordRateLimit(
+                    accessToken: accessToken,
+                    retryAfter: retryAfter)
                 throw ClaudeOAuthFetchError.rateLimited(
-                    retryAfter: ClaudeOAuthUsageRateLimitGate.currentBlockedUntil() ?? retryAfter)
+                    retryAfter: ClaudeOAuthUsageRateLimitGate
+                        .currentBlockedUntil(accessToken: accessToken) ?? retryAfter)
             case 403:
                 let body = String(data: data, encoding: .utf8)
                 throw ClaudeOAuthFetchError.serverError(response.statusCode, body)
@@ -97,7 +113,9 @@ enum ClaudeOAuthUsageFetcher {
         guard let string, !string.isEmpty else { return nil }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) { return date }
+        if let date = formatter.date(from: string) {
+            return date
+        }
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: string)
     }
@@ -119,8 +137,11 @@ enum ClaudeOAuthUsageFetcher {
         return formatter.date(from: raw)
     }
 
-    private static func claudeCodeUserAgent() -> String {
-        self.claudeCodeUserAgent(versionString: ProviderVersionDetector.claudeVersion())
+    private static func claudeCodeUserAgent(
+        detectClaudeVersion: Bool,
+        versionDetector: () -> String? = { ProviderVersionDetector.claudeVersion() }) -> String
+    {
+        self.claudeCodeUserAgent(versionString: detectClaudeVersion ? versionDetector() : nil)
     }
 
     private static func claudeCodeUserAgent(versionString: String?) -> String {
@@ -148,6 +169,10 @@ struct OAuthUsageResponse: Decodable {
     let sevenDayRoutinesSourceKey: String?
     let iguanaNecktie: OAuthUsageWindow?
     let extraUsage: OAuthExtraUsage?
+    /// Newer shape (superseding the flat `seven_day_*` fields above for scoped weekly
+    /// windows): a flat list of limit entries, each optionally naming the model it scopes
+    /// to via `scope.model.display_name` (e.g. "Fable" during a promotional access window).
+    let limits: [OAuthLimitEntry]?
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
@@ -169,6 +194,7 @@ struct OAuthUsageResponse: Decodable {
         self.sevenDayRoutinesSourceKey = routines.sourceKey
         self.iguanaNecktie = Self.decodeWindow(in: container, keys: ["iguana_necktie"])
         self.extraUsage = Self.decodeValue(in: container, keys: ["extra_usage"])
+        self.limits = Self.decodeValue(in: container, keys: ["limits"])
     }
 
     private static func decodeWindow(
@@ -234,6 +260,41 @@ struct OAuthUsageWindow: Decodable {
     }
 }
 
+/// A single entry from the `limits` array. `kind`/`group` classify the limit
+/// (e.g. `kind: "weekly_scoped"`, `group: "weekly"`); `scope.model.display_name` names the
+/// model it applies to when the limit is scoped to one, rather than the whole account.
+struct OAuthLimitEntry: Decodable {
+    let kind: String?
+    let group: String?
+    let percent: Double?
+    let resetsAt: String?
+    let scope: OAuthLimitScope?
+    let isActive: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case group
+        case percent
+        case resetsAt = "resets_at"
+        case scope
+        case isActive = "is_active"
+    }
+}
+
+struct OAuthLimitScope: Decodable {
+    let model: OAuthLimitScopeModel?
+}
+
+struct OAuthLimitScopeModel: Decodable {
+    let id: String?
+    let displayName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+    }
+}
+
 struct OAuthExtraUsage: Decodable {
     let isEnabled: Bool?
     let monthlyLimit: Double?
@@ -258,6 +319,15 @@ extension ClaudeOAuthUsageFetcher {
 
     static func _userAgentForTesting(versionString: String?) -> String {
         self.claudeCodeUserAgent(versionString: versionString)
+    }
+
+    static func _userAgentForTesting(
+        detectClaudeVersion: Bool,
+        versionDetector: () -> String?) -> String
+    {
+        self.claudeCodeUserAgent(
+            detectClaudeVersion: detectClaudeVersion,
+            versionDetector: versionDetector)
     }
 
     static func _retryAfterDateForTesting(from response: HTTPURLResponse, now: Date) -> Date? {

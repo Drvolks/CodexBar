@@ -47,13 +47,21 @@ struct AlibabaTokenPlanSettingsReaderTests {
         ])
 
         #expect(httpHost == nil)
-        #expect(httpsHost == "https://dashboard.token-plan.test")
+        #expect(httpsHost == "dashboard.token-plan.test")
         #expect(bareHost == "dashboard.token-plan.test")
     }
 
     @Test
     func `default quota URL targets subscription summary API`() {
         let url = AlibabaTokenPlanUsageFetcher.defaultQuotaURL
+        #expect(url.host == "modelstudio.console.alibabacloud.com")
+        #expect(url.absoluteString.contains("GetSubscriptionSummary"))
+        #expect(url.absoluteString.contains("BssOpenAPI-V3"))
+    }
+
+    @Test
+    func `default quota URL for china mainland targets bailian`() {
+        let url = AlibabaTokenPlanUsageFetcher.defaultQuotaURL(region: .chinaMainland)
         #expect(url.host == "bailian.console.aliyun.com")
         #expect(url.absoluteString.contains("GetSubscriptionSummary"))
         #expect(url.absoluteString.contains("BssOpenAPI-V3"))
@@ -64,6 +72,26 @@ struct AlibabaTokenPlanCookieHeaderTests {
     @Test
     func `builds URL scoped headers for API and dashboard`() throws {
         let cookies = [
+            self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".alibabacloud.com"),
+            self.cookie(name: "login_current_pk", value: "account", domain: ".alibabacloud.com"),
+            self.cookie(name: "sec_token", value: "shared", domain: ".console.alibabacloud.com"),
+            self.cookie(name: "sec_token", value: "dashboard", domain: "modelstudio.console.alibabacloud.com"),
+            self.cookie(name: "bailian_only", value: "bailian", domain: "bailian.console.aliyun.com"),
+        ]
+
+        let headers = try #require(AlibabaTokenPlanCookieHeader.headers(from: cookies))
+
+        #expect(headers.apiCookieHeader.contains("login_aliyunid_ticket=ticket"))
+        #expect(headers.apiCookieHeader.contains("login_current_pk=account"))
+        #expect(headers.apiCookieHeader.contains("sec_token=dashboard"))
+        #expect(!headers.apiCookieHeader.contains("bailian_only=bailian"))
+        #expect(headers.dashboardCookieHeader.contains("sec_token=dashboard"))
+        #expect(!headers.dashboardCookieHeader.contains("bailian_only=bailian"))
+    }
+
+    @Test
+    func `builds URL scoped headers for china mainland region`() throws {
+        let cookies = [
             self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".aliyun.com"),
             self.cookie(name: "login_current_pk", value: "account", domain: ".aliyun.com"),
             self.cookie(name: "sec_token", value: "shared", domain: ".console.aliyun.com"),
@@ -71,7 +99,7 @@ struct AlibabaTokenPlanCookieHeaderTests {
             self.cookie(name: "modelstudio_only", value: "modelstudio", domain: "modelstudio.console.alibabacloud.com"),
         ]
 
-        let headers = try #require(AlibabaTokenPlanCookieHeader.headers(from: cookies))
+        let headers = try #require(AlibabaTokenPlanCookieHeader.headers(from: cookies, region: .chinaMainland))
 
         #expect(headers.apiCookieHeader.contains("login_aliyunid_ticket=ticket"))
         #expect(headers.apiCookieHeader.contains("login_current_pk=account"))
@@ -101,8 +129,11 @@ struct AlibabaTokenPlanCookieHeaderTests {
             self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".token-plan.test"),
             self.cookie(name: "api_only", value: "api", domain: "quota.token-plan.test"),
             self.cookie(name: "dashboard_only", value: "dashboard", domain: "dashboard.token-plan.test"),
-            self.cookie(name: "prod_api_only", value: "prod-api", domain: "bailian.console.aliyun.com"),
-            self.cookie(name: "prod_dashboard_only", value: "prod-dashboard", domain: "bailian.console.aliyun.com"),
+            self.cookie(name: "prod_api_only", value: "prod-api", domain: "modelstudio.console.alibabacloud.com"),
+            self.cookie(
+                name: "prod_dashboard_only",
+                value: "prod-dashboard",
+                domain: "modelstudio.console.alibabacloud.com"),
         ]
 
         let headers = try #require(AlibabaTokenPlanCookieHeader.headers(
@@ -346,11 +377,19 @@ struct AlibabaTokenPlanUsageParsingTests {
             AlibabaTokenPlanStubURLProtocol.handler = nil
         }
 
+        let hostOverride = "https://alibaba-token-plan.test:9443"
+        let environment: [String: String] = [
+            AlibabaTokenPlanSettingsReader.hostKey: hostOverride,
+        ]
+        let expectedReferer = AlibabaTokenPlanUsageFetcher.dashboardURL(
+            region: .international,
+            environment: environment).absoluteString
+
         AlibabaTokenPlanStubURLProtocol.handler = { request in
             guard let url = request.url else { throw URLError(.badURL) }
 
             if url.host == "alibaba-token-plan.test",
-               url.path == "/cn-beijing",
+               url.path == "/ap-southeast-1/",
                request.httpMethod == "GET"
             {
                 #expect(url.port == 9443)
@@ -378,15 +417,14 @@ struct AlibabaTokenPlanUsageParsingTests {
 
             if url.host == "alibaba-token-plan.test", request.httpMethod == "POST" {
                 #expect(request.value(forHTTPHeaderField: "Cookie") == "login_aliyunid_ticket=ticket; raw_only=keep")
-                #expect(request.value(forHTTPHeaderField: "Origin") == "https://bailian.console.aliyun.com")
-                #expect(request.value(forHTTPHeaderField: "Referer") == AlibabaTokenPlanUsageFetcher.dashboardURL
-                    .absoluteString)
+                #expect(request.value(forHTTPHeaderField: "Origin") == "https://modelstudio.console.alibabacloud.com")
+                #expect(request.value(forHTTPHeaderField: "Referer") == expectedReferer)
                 let body = Self.requestBodyString(from: request)
                 #expect(body.contains("sec_token=user-info-token"))
                 #expect(body.contains("GetSubscriptionSummary"))
                 #expect(body.contains("BssOpenAPI-V3"))
                 #expect(body.contains("ProductCode"))
-                #expect(body.contains("sfm_tokenplanteams_dp_cn"))
+                #expect(body.contains("sfm_tokenplanteams_dp_intl"))
                 let json = """
                 {
                   "Success": true,
@@ -409,7 +447,7 @@ struct AlibabaTokenPlanUsageParsingTests {
         let snapshot = try await AlibabaTokenPlanUsageFetcher.fetchUsage(
             apiCookieHeader: "login_aliyunid_ticket=ticket; raw_only=keep",
             dashboardCookieHeader: "login_aliyunid_ticket=ticket; raw_only=keep",
-            environment: [AlibabaTokenPlanSettingsReader.hostKey: "https://alibaba-token-plan.test:9443"],
+            environment: environment,
             session: session)
 
         #expect(snapshot.planName == "TOKEN PLAN")
@@ -565,59 +603,283 @@ struct AlibabaTokenPlanWebStrategyTests {
         }
     }
 
+    private func clearCookieCaches() {
+        CookieHeaderCache.clear(provider: .alibabatokenplan)
+        for region in AlibabaTokenPlanAPIRegion.allCases {
+            CookieHeaderCache.clear(provider: .alibabatokenplan, scope: region.cookieCacheScope)
+        }
+    }
+
     @Test
     func `auto web strategy surfaces cookie import errors`() async throws {
-        let strategy = AlibabaTokenPlanWebFetchStrategy()
-        let settings = ProviderSettingsSnapshot.make(
-            alibabaTokenPlan: ProviderSettingsSnapshot.AlibabaTokenPlanProviderSettings(
-                cookieSource: .auto,
-                manualCookieHeader: nil))
-        let context = ProviderFetchContext(
-            runtime: .cli,
-            sourceMode: .web,
-            includeCredits: false,
-            webTimeout: 1,
-            webDebugDumpHTML: false,
-            verbose: false,
-            env: [:],
-            settings: settings,
-            fetcher: UsageFetcher(environment: [:]),
-            claudeFetcher: StubClaudeFetcher(),
-            browserDetection: BrowserDetection(cacheTTL: 0))
+        try await self.withIsolatedCookieCache {
+            let strategy = AlibabaTokenPlanWebFetchStrategy()
+            let settings = ProviderSettingsSnapshot.make(
+                alibabaTokenPlan: ProviderSettingsSnapshot.AlibabaTokenPlanProviderSettings(
+                    cookieSource: .auto,
+                    manualCookieHeader: nil))
+            let context = ProviderFetchContext(
+                runtime: .cli,
+                sourceMode: .web,
+                includeCredits: false,
+                webTimeout: 1,
+                webDebugDumpHTML: false,
+                verbose: false,
+                env: [:],
+                settings: settings,
+                fetcher: UsageFetcher(environment: [:]),
+                claudeFetcher: StubClaudeFetcher(),
+                browserDetection: BrowserDetection(cacheTTL: 0))
 
-        CookieHeaderCache.clear(provider: .alibabatokenplan)
-        AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = { _, _ in
-            throw AlibabaCodingPlanSettingsError.missingCookie(
-                details: "macOS Keychain denied access to Chrome Safe Storage.")
-        }
-        defer {
-            AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = nil
-        }
+            self.clearCookieCaches()
+            defer { self.clearCookieCaches() }
 
-        #expect(await strategy.isAvailable(context))
+            try await AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                throw AlibabaCodingPlanSettingsError.missingCookie(
+                    details: "macOS Keychain denied access to Chrome Safe Storage.")
+            } operation: {
+                #expect(await strategy.isAvailable(context))
 
-        do {
-            _ = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeader(context: context, allowCached: false)
-            Issue.record("Expected cookie import failure to be surfaced")
-        } catch let error as AlibabaTokenPlanSettingsError {
-            guard case let .missingCookie(details) = error else {
-                Issue.record("Expected missingCookie, got \(error)")
-                return
+                do {
+                    _ = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeader(context: context, allowCached: false)
+                    Issue.record("Expected cookie import failure to be surfaced")
+                } catch let error as AlibabaTokenPlanSettingsError {
+                    guard case let .missingCookie(details) = error else {
+                        Issue.record("Expected missingCookie, got \(error)")
+                        return
+                    }
+                    #expect(details == "macOS Keychain denied access to Chrome Safe Storage.")
+                    #expect(error.localizedDescription.contains("Alibaba Token Plan"))
+                    #expect(!error.localizedDescription.contains("Alibaba Coding Plan"))
+                }
             }
-            #expect(details == "macOS Keychain denied access to Chrome Safe Storage.")
-            #expect(error.localizedDescription.contains("Alibaba Token Plan"))
-            #expect(!error.localizedDescription.contains("Alibaba Coding Plan"))
         }
     }
 
     @Test
     func `auto web strategy imports subscription scoped token plan cookies`() throws {
-        let strategy = AlibabaTokenPlanWebFetchStrategy()
+        try self.withIsolatedCookieCache {
+            let strategy = AlibabaTokenPlanWebFetchStrategy()
+            let settings = ProviderSettingsSnapshot.make(
+                alibabaTokenPlan: ProviderSettingsSnapshot.AlibabaTokenPlanProviderSettings(
+                    cookieSource: .auto,
+                    manualCookieHeader: nil))
+            let context = ProviderFetchContext(
+                runtime: .cli,
+                sourceMode: .web,
+                includeCredits: false,
+                webTimeout: 1,
+                webDebugDumpHTML: false,
+                verbose: false,
+                env: [:],
+                settings: settings,
+                fetcher: UsageFetcher(environment: [:]),
+                claudeFetcher: StubClaudeFetcher(),
+                browserDetection: BrowserDetection(cacheTTL: 0))
+
+            self.clearCookieCaches()
+            defer { self.clearCookieCaches() }
+
+            let headers = try AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                AlibabaCodingPlanCookieImporter.SessionInfo(
+                    cookies: [
+                        self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".alibabacloud.com"),
+                        self.cookie(name: "login_current_pk", value: "account", domain: ".alibabacloud.com"),
+                        self.cookie(
+                            name: "dashboard_only",
+                            value: "dashboard",
+                            domain: "modelstudio.console.alibabacloud.com"),
+                        self.cookie(
+                            name: "bailian_only",
+                            value: "bailian",
+                            domain: "bailian.console.aliyun.com"),
+                        self.cookie(name: "aliyun_only", value: "aliyun", domain: ".aliyun.com"),
+                    ],
+                    sourceLabel: "Chrome Default")
+            } operation: {
+                try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(context: context, allowCached: false)
+            }
+
+            #expect(headers.apiCookieHeader == headers.dashboardCookieHeader)
+            #expect(headers.apiCookieHeader.contains("dashboard_only=dashboard"))
+            #expect(!headers.apiCookieHeader.contains("bailian_only=bailian"))
+            #expect(!headers.apiCookieHeader.contains("aliyun_only=aliyun"))
+            #expect(headers.dashboardCookieHeader.contains("dashboard_only=dashboard"))
+            #expect(!headers.dashboardCookieHeader.contains("bailian_only=bailian"))
+            #expect(!headers.dashboardCookieHeader.contains("aliyun_only=aliyun"))
+
+            let cachedHeaders = try AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                throw AlibabaCodingPlanSettingsError.missingCookie(details: "unexpected import")
+            } operation: {
+                try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(
+                    context: context,
+                    allowCached: true)
+            }
+            #expect(cachedHeaders.apiCookieHeader == headers.apiCookieHeader)
+            #expect(cachedHeaders.dashboardCookieHeader == headers.dashboardCookieHeader)
+            #expect(strategy.id == "alibaba-token-plan.web")
+        }
+    }
+
+    @Test
+    func `auto web strategy scopes imported cookies to environment overrides`() throws {
+        try self.withIsolatedCookieCache {
+            let settings = ProviderSettingsSnapshot.make(
+                alibabaTokenPlan: ProviderSettingsSnapshot.AlibabaTokenPlanProviderSettings(
+                    cookieSource: .auto,
+                    manualCookieHeader: nil))
+            let environment = [
+                AlibabaTokenPlanSettingsReader.quotaURLKey: "https://quota.token-plan.test/data/api.json",
+                AlibabaTokenPlanSettingsReader.hostKey: "https://dashboard.token-plan.test",
+            ]
+            let context = ProviderFetchContext(
+                runtime: .cli,
+                sourceMode: .web,
+                includeCredits: false,
+                webTimeout: 1,
+                webDebugDumpHTML: false,
+                verbose: false,
+                env: environment,
+                settings: settings,
+                fetcher: UsageFetcher(environment: environment),
+                claudeFetcher: StubClaudeFetcher(),
+                browserDetection: BrowserDetection(cacheTTL: 0))
+
+            self.clearCookieCaches()
+            defer { self.clearCookieCaches() }
+
+            let headers = try AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                AlibabaCodingPlanCookieImporter.SessionInfo(
+                    cookies: [
+                        self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".token-plan.test"),
+                        self.cookie(name: "api_only", value: "api", domain: "quota.token-plan.test"),
+                        self.cookie(name: "dashboard_only", value: "dashboard", domain: "dashboard.token-plan.test"),
+                        self.cookie(name: "prod_api_only", value: "prod-api", domain: "bailian.console.aliyun.com"),
+                        self.cookie(
+                            name: "prod_dashboard_only",
+                            value: "prod-dashboard",
+                            domain: "bailian.console.aliyun.com"),
+                    ],
+                    sourceLabel: "Chrome Default")
+            } operation: {
+                try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(context: context, allowCached: false)
+            }
+
+            #expect(headers.apiCookieHeader.contains("api_only=api"))
+            #expect(!headers.apiCookieHeader.contains("prod_api_only=prod-api"))
+            #expect(headers.dashboardCookieHeader.contains("dashboard_only=dashboard"))
+            #expect(!headers.dashboardCookieHeader.contains("prod_dashboard_only=prod-dashboard"))
+        }
+    }
+
+    @Test
+    func `cached browser cookies stay isolated by gateway region`() throws {
+        try self.withIsolatedCookieCache {
+            self.clearCookieCaches()
+            defer { self.clearCookieCaches() }
+            CookieHeaderCache.store(
+                provider: .alibabatokenplan,
+                scope: AlibabaTokenPlanAPIRegion.international.cookieCacheScope,
+                cookieHeader: "login_aliyunid_ticket=intl-ticket; gateway=intl",
+                sourceLabel: "International fixture")
+            CookieHeaderCache.store(
+                provider: .alibabatokenplan,
+                scope: AlibabaTokenPlanAPIRegion.chinaMainland.cookieCacheScope,
+                cookieHeader: "login_aliyunid_ticket=cn-ticket; gateway=cn",
+                sourceLabel: "China fixture")
+            try AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                throw AlibabaCodingPlanSettingsError.missingCookie(details: "unexpected import")
+            } operation: {
+                let context = self.context(region: .international)
+                let international = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(
+                    context: context,
+                    allowCached: true,
+                    region: .international)
+                let china = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(
+                    context: context,
+                    allowCached: true,
+                    region: .chinaMainland)
+
+                #expect(international.apiCookieHeader.contains("gateway=intl"))
+                #expect(!international.apiCookieHeader.contains("gateway=cn"))
+                #expect(china.apiCookieHeader.contains("gateway=cn"))
+                #expect(!china.apiCookieHeader.contains("gateway=intl"))
+            }
+        }
+    }
+
+    @Test
+    func `legacy unscoped cache migrates only to China gateway`() throws {
+        try self.withIsolatedCookieCache {
+            self.clearCookieCaches()
+            defer { self.clearCookieCaches() }
+            CookieHeaderCache.store(
+                provider: .alibabatokenplan,
+                cookieHeader: "login_aliyunid_ticket=legacy; gateway=legacy-cn",
+                sourceLabel: "Legacy fixture")
+            let context = self.context(region: .international)
+            let international = try AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                AlibabaCodingPlanCookieImporter.SessionInfo(
+                    cookies: [
+                        self.cookie(
+                            name: "login_aliyunid_ticket",
+                            value: "intl",
+                            domain: ".alibabacloud.com"),
+                        self.cookie(
+                            name: "gateway",
+                            value: "intl",
+                            domain: "modelstudio.console.alibabacloud.com"),
+                    ],
+                    sourceLabel: "International fixture")
+            } operation: {
+                try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(
+                    context: context,
+                    allowCached: true,
+                    region: .international)
+            }
+
+            let china = try AlibabaCodingPlanCookieImporter.withImportSessionOverrideForTesting { _, _ in
+                throw AlibabaCodingPlanSettingsError.missingCookie(details: "unexpected China import")
+            } operation: {
+                try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(
+                    context: context,
+                    allowCached: true,
+                    region: .chinaMainland)
+            }
+
+            #expect(international.apiCookieHeader.contains("gateway=intl"))
+            #expect(!international.apiCookieHeader.contains("gateway=legacy-cn"))
+            #expect(china.apiCookieHeader.contains("gateway=legacy-cn"))
+            #expect(CookieHeaderCache.load(provider: .alibabatokenplan) == nil)
+            #expect(CookieHeaderCache.load(
+                provider: .alibabatokenplan,
+                scope: AlibabaTokenPlanAPIRegion.chinaMainland.cookieCacheScope) != nil)
+        }
+    }
+
+    private func withIsolatedCookieCache<T>(_ operation: () throws -> T) rethrows -> T {
+        try KeychainCacheStore.withServiceOverrideForTesting(
+            "alibaba-token-plan-web-strategy-tests-\(UUID().uuidString)",
+            operation: {
+                try KeychainCacheStore.withImplicitTestStoreForTesting(operation: operation)
+            })
+    }
+
+    private func withIsolatedCookieCache<T>(_ operation: () async throws -> T) async rethrows -> T {
+        try await KeychainCacheStore.withServiceOverrideForTesting(
+            "alibaba-token-plan-web-strategy-tests-\(UUID().uuidString)",
+            operation: {
+                try await KeychainCacheStore.withImplicitTestStoreForTesting(operation: operation)
+            })
+    }
+
+    private func context(region: AlibabaTokenPlanAPIRegion) -> ProviderFetchContext {
         let settings = ProviderSettingsSnapshot.make(
             alibabaTokenPlan: ProviderSettingsSnapshot.AlibabaTokenPlanProviderSettings(
                 cookieSource: .auto,
-                manualCookieHeader: nil))
-        let context = ProviderFetchContext(
+                manualCookieHeader: nil,
+                apiRegion: region))
+        return ProviderFetchContext(
             runtime: .cli,
             sourceMode: .web,
             includeCredits: false,
@@ -629,97 +891,6 @@ struct AlibabaTokenPlanWebStrategyTests {
             fetcher: UsageFetcher(environment: [:]),
             claudeFetcher: StubClaudeFetcher(),
             browserDetection: BrowserDetection(cacheTTL: 0))
-
-        CookieHeaderCache.clear(provider: .alibabatokenplan)
-        AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = { _, _ in
-            AlibabaCodingPlanCookieImporter.SessionInfo(
-                cookies: [
-                    self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".aliyun.com"),
-                    self.cookie(name: "login_current_pk", value: "account", domain: ".aliyun.com"),
-                    self.cookie(name: "dashboard_only", value: "dashboard", domain: "bailian.console.aliyun.com"),
-                    self.cookie(
-                        name: "modelstudio_only",
-                        value: "modelstudio",
-                        domain: "modelstudio.console.alibabacloud.com"),
-                    self.cookie(name: "alibabacloud_only", value: "cloud", domain: ".alibabacloud.com"),
-                ],
-                sourceLabel: "Chrome Default")
-        }
-        defer {
-            AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = nil
-            CookieHeaderCache.clear(provider: .alibabatokenplan)
-        }
-
-        let headers = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(context: context, allowCached: false)
-
-        #expect(headers.apiCookieHeader == headers.dashboardCookieHeader)
-        #expect(headers.apiCookieHeader.contains("dashboard_only=dashboard"))
-        #expect(!headers.apiCookieHeader.contains("modelstudio_only=modelstudio"))
-        #expect(!headers.apiCookieHeader.contains("alibabacloud_only=cloud"))
-        #expect(headers.dashboardCookieHeader.contains("dashboard_only=dashboard"))
-        #expect(!headers.dashboardCookieHeader.contains("modelstudio_only=modelstudio"))
-        #expect(!headers.dashboardCookieHeader.contains("alibabacloud_only=cloud"))
-
-        AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = { _, _ in
-            throw AlibabaCodingPlanSettingsError.missingCookie(details: "unexpected import")
-        }
-        let cachedHeaders = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(
-            context: context,
-            allowCached: true)
-        #expect(cachedHeaders.apiCookieHeader == headers.apiCookieHeader)
-        #expect(cachedHeaders.dashboardCookieHeader == headers.dashboardCookieHeader)
-        #expect(strategy.id == "alibaba-token-plan.web")
-    }
-
-    @Test
-    func `auto web strategy scopes imported cookies to environment overrides`() throws {
-        let settings = ProviderSettingsSnapshot.make(
-            alibabaTokenPlan: ProviderSettingsSnapshot.AlibabaTokenPlanProviderSettings(
-                cookieSource: .auto,
-                manualCookieHeader: nil))
-        let environment = [
-            AlibabaTokenPlanSettingsReader.quotaURLKey: "https://quota.token-plan.test/data/api.json",
-            AlibabaTokenPlanSettingsReader.hostKey: "https://dashboard.token-plan.test",
-        ]
-        let context = ProviderFetchContext(
-            runtime: .cli,
-            sourceMode: .web,
-            includeCredits: false,
-            webTimeout: 1,
-            webDebugDumpHTML: false,
-            verbose: false,
-            env: environment,
-            settings: settings,
-            fetcher: UsageFetcher(environment: environment),
-            claudeFetcher: StubClaudeFetcher(),
-            browserDetection: BrowserDetection(cacheTTL: 0))
-
-        CookieHeaderCache.clear(provider: .alibabatokenplan)
-        AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = { _, _ in
-            AlibabaCodingPlanCookieImporter.SessionInfo(
-                cookies: [
-                    self.cookie(name: "login_aliyunid_ticket", value: "ticket", domain: ".token-plan.test"),
-                    self.cookie(name: "api_only", value: "api", domain: "quota.token-plan.test"),
-                    self.cookie(name: "dashboard_only", value: "dashboard", domain: "dashboard.token-plan.test"),
-                    self.cookie(name: "prod_api_only", value: "prod-api", domain: "bailian.console.aliyun.com"),
-                    self.cookie(
-                        name: "prod_dashboard_only",
-                        value: "prod-dashboard",
-                        domain: "bailian.console.aliyun.com"),
-                ],
-                sourceLabel: "Chrome Default")
-        }
-        defer {
-            AlibabaCodingPlanCookieImporter.importSessionOverrideForTesting = nil
-            CookieHeaderCache.clear(provider: .alibabatokenplan)
-        }
-
-        let headers = try AlibabaTokenPlanWebFetchStrategy.resolveCookieHeaders(context: context, allowCached: false)
-
-        #expect(headers.apiCookieHeader.contains("api_only=api"))
-        #expect(!headers.apiCookieHeader.contains("prod_api_only=prod-api"))
-        #expect(headers.dashboardCookieHeader.contains("dashboard_only=dashboard"))
-        #expect(!headers.dashboardCookieHeader.contains("prod_dashboard_only=prod-dashboard"))
     }
 
     private func cookie(
@@ -741,7 +912,11 @@ struct AlibabaTokenPlanWebStrategyTests {
 }
 
 final class AlibabaTokenPlanStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let _handlerBox = LockIsolated<((URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { Self._handlerBox.value }
+        set { Self._handlerBox.setValue(newValue) }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }

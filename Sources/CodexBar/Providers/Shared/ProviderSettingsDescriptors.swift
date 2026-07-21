@@ -164,7 +164,18 @@ struct ProviderSettingsTokenAccountsDescriptor: Identifiable {
     let activeIndex: () -> Int
     let setActiveIndex: (Int) -> Void
     let showsOrganizationField: Bool
-    let addAccount: (_ label: String, _ token: String, _ organizationID: String?) -> Void
+    let showsTeamModeControls: Bool
+    let addAccount: (
+        _ label: String,
+        _ token: String,
+        _ usageScope: String?,
+        _ organizationID: String?,
+        _ workspaceID: String?) -> Void
+    let updateAccount: (
+        _ accountID: UUID,
+        _ usageScope: String?,
+        _ organizationID: String?,
+        _ workspaceID: String?) -> Void
     let removeAccount: (_ accountID: UUID) -> Void
     let primaryAddActionTitle: String?
     let primaryAddAction: (() async -> Void)?
@@ -221,11 +232,17 @@ struct ProviderSettingsOrganizationsDescriptor: Identifiable {
 }
 
 /// Shared picker descriptor rendered in the Providers settings pane.
+enum ProviderSettingsPickerPlacement: Equatable {
+    case menuBar
+    case connection
+}
+
 @MainActor
 struct ProviderSettingsPickerDescriptor: Identifiable {
     let id: String
     let title: String
     let subtitle: String
+    let placement: ProviderSettingsPickerPlacement
     let dynamicSubtitle: (() -> String?)?
     let binding: Binding<String>
     let options: [ProviderSettingsPickerOption]
@@ -233,22 +250,26 @@ struct ProviderSettingsPickerDescriptor: Identifiable {
     let isEnabled: (() -> Bool)?
     let onChange: ((_ selection: String) async -> Void)?
     let trailingText: (() -> String?)?
+    let trailingActions: [ProviderSettingsActionDescriptor]
 
     init(
         id: String,
         title: String,
         subtitle: String,
+        placement: ProviderSettingsPickerPlacement = .connection,
         dynamicSubtitle: (() -> String?)? = nil,
         binding: Binding<String>,
         options: [ProviderSettingsPickerOption],
         isVisible: (() -> Bool)?,
         isEnabled: (() -> Bool)? = nil,
         onChange: ((_ selection: String) async -> Void)?,
-        trailingText: (() -> String?)? = nil)
+        trailingText: (() -> String?)? = nil,
+        trailingActions: [ProviderSettingsActionDescriptor] = [])
     {
         self.id = id
         self.title = title
         self.subtitle = subtitle
+        self.placement = placement
         self.dynamicSubtitle = dynamicSubtitle
         self.binding = binding
         self.options = options
@@ -256,6 +277,7 @@ struct ProviderSettingsPickerDescriptor: Identifiable {
         self.isEnabled = isEnabled
         self.onChange = onChange
         self.trailingText = trailingText
+        self.trailingActions = trailingActions
     }
 }
 

@@ -159,6 +159,7 @@ final class CLIEntryTests: XCTestCase {
     func test_mapsErrorsToExitCodes() {
         XCTAssertEqual(CodexBarCLI.mapError(CodexStatusProbeError.codexNotInstalled), ExitCode(2))
         XCTAssertEqual(CodexBarCLI.mapError(CodexStatusProbeError.timedOut), ExitCode(4))
+        XCTAssertEqual(CodexBarCLI.mapError(ClaudeWebFetchStrategyError.timedOut(seconds: 1)), ExitCode(4))
         XCTAssertEqual(CodexBarCLI.mapError(UsageError.noRateLimitsFound), ExitCode(3))
     }
 
@@ -227,11 +228,18 @@ final class CLIEntryTests: XCTestCase {
         let signature = CodexBarCLI._usageSignatureForTesting()
         let parser = CommandParser(signature: signature)
         let parsed = try parser.parse(arguments: ["--web-timeout", "45", "--source", "oauth"])
-        XCTAssertEqual(CodexBarCLI._decodeWebTimeoutForTesting(from: parsed), 45)
+        XCTAssertEqual(try CodexBarCLI._decodeWebTimeoutForTesting(from: parsed), 45)
         XCTAssertEqual(CodexBarCLI._decodeSourceModeForTesting(from: parsed), .oauth)
 
         let parsedWeb = try parser.parse(arguments: ["--web"])
         XCTAssertEqual(CodexBarCLI._decodeSourceModeForTesting(from: parsedWeb), .web)
+    }
+
+    func test_rejectsUnsafeWebTimeoutOptions() throws {
+        for value in ["-1", "nan", "inf", "1e300"] {
+            let parsed = ParsedValues(positional: [], options: ["webTimeout": [value]], flags: [])
+            XCTAssertThrowsError(try CodexBarCLI._decodeWebTimeoutForTesting(from: parsed))
+        }
     }
 
     func test_shouldUseColorRespectsFormatAndFlags() {
@@ -319,6 +327,8 @@ final class CLIEntryTests: XCTestCase {
 
         XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(.web, provider: .kilo))
         XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .codex))
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .claude))
+        XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(.web, provider: .claude))
         XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .kilo))
         XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .grok))
         XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(.web, provider: .grok))
@@ -377,6 +387,32 @@ final class CLIEntryTests: XCTestCase {
                 commandcode: .init(
                     cookieSource: .auto,
                     manualCookieHeader: nil))))
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .auto,
+            provider: .sakana,
+            environment: ["SAKANA_COOKIE": "session=manual"]))
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .web,
+            provider: .sakana,
+            environment: ["SAKANA_COOKIE": "session=manual"]))
+        XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(
+            .auto,
+            provider: .sakana,
+            environment: [:]))
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .web,
+            provider: .qoder,
+            settings: ProviderSettingsSnapshot.make(
+                qoder: .init(
+                    cookieSource: .manual,
+                    manualCookieHeader: "sid=manual"))))
+        XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(
+            .web,
+            provider: .qoder,
+            settings: ProviderSettingsSnapshot.make(
+                qoder: .init(
+                    cookieSource: .auto,
+                    manualCookieHeader: nil))))
         XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(
             .auto,
             provider: .opencode,
@@ -402,6 +438,7 @@ final class CLIEntryTests: XCTestCase {
             .auto,
             provider: .kimi,
             environment: ["KIMI_CODE_API_KEY": "kimi-test"]))
+        try self.assertKimiCodeCredentialSourceMode(in: directory)
         XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
             .auto,
             provider: .mimo,
@@ -418,5 +455,46 @@ final class CLIEntryTests: XCTestCase {
             .auto,
             provider: .mimo,
             environment: ["MIMO_LOCAL_USAGE_PATH": directory.appendingPathComponent("missing.json").path]))
+    }
+
+    private func assertKimiCodeCredentialSourceMode(in directory: URL) throws {
+        let home = directory.appendingPathComponent("kimi-code", isDirectory: true)
+        let credentials = home.appendingPathComponent("credentials", isDirectory: true)
+        try FileManager.default.createDirectory(at: credentials, withIntermediateDirectories: true)
+        let payload: [String: Any] = [
+            "access_token": "expired",
+            "refresh_token": "refresh",
+            "expires_at": Date().addingTimeInterval(-60).timeIntervalSince1970,
+        ]
+        try JSONSerialization.data(withJSONObject: payload)
+            .write(to: credentials.appendingPathComponent("kimi-code.json"))
+
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .auto,
+            provider: .kimi,
+            environment: ["KIMI_CODE_HOME": home.path]))
+    }
+
+    func test_sourceModeRequiresWebSupportAllowsFactoryAPIKeyOnLinuxGate() {
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .auto,
+            provider: .factory,
+            environment: ["FACTORY_API_KEY": "fk-test"]))
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .cli,
+            provider: .factory,
+            environment: ["FACTORY_API_KEY": "fk-test"]))
+        XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(
+            .auto,
+            provider: .factory,
+            environment: [:]))
+        XCTAssertTrue(CodexBarCLI.sourceModeRequiresWebSupport(
+            .web,
+            provider: .factory,
+            environment: ["FACTORY_API_KEY": "fk-test"]))
+        XCTAssertFalse(CodexBarCLI.sourceModeRequiresWebSupport(
+            .api,
+            provider: .factory,
+            environment: [:]))
     }
 }

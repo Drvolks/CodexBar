@@ -21,14 +21,24 @@ struct UsageStoreSessionQuotaTransitionTests {
         private(set) var quotaWarningPosts: [(
             event: QuotaWarningEvent,
             provider: UsageProvider,
-            soundEnabled: Bool)] = []
+            soundEnabled: Bool,
+            onScreenAlertEnabled: Bool)] = []
 
         func post(transition: SessionQuotaTransition, provider: UsageProvider, badge _: NSNumber?) {
             self.posts.append((transition: transition, provider: provider))
         }
 
-        func postQuotaWarning(event: QuotaWarningEvent, provider: UsageProvider, soundEnabled: Bool) {
-            self.quotaWarningPosts.append((event: event, provider: provider, soundEnabled: soundEnabled))
+        func postQuotaWarning(
+            event: QuotaWarningEvent,
+            provider: UsageProvider,
+            soundEnabled: Bool,
+            onScreenAlertEnabled: Bool)
+        {
+            self.quotaWarningPosts.append((
+                event: event,
+                provider: provider,
+                soundEnabled: soundEnabled,
+                onScreenAlertEnabled: onScreenAlertEnabled))
         }
     }
 
@@ -330,6 +340,7 @@ struct UsageStoreSessionQuotaTransitionTests {
         settings.refreshFrequency = .manual
         settings.statusChecksEnabled = false
         settings.quotaWarningNotificationsEnabled = true
+        settings.quotaWarningOnScreenAlertEnabled = true
         settings.quotaWarningThresholds = [50, 20]
         settings.setQuotaWarningWindowEnabled(.session, enabled: true)
         settings.setQuotaWarningWindowEnabled(.weekly, enabled: true)
@@ -379,6 +390,7 @@ struct UsageStoreSessionQuotaTransitionTests {
         #expect(notifier.quotaWarningPosts.first?.event.window == .session)
         #expect(notifier.quotaWarningPosts.first?.event.threshold == 50)
         #expect(notifier.quotaWarningPosts.first?.event.accountDisplayName == "person@example.com")
+        #expect(notifier.quotaWarningPosts.first?.onScreenAlertEnabled == true)
     }
 
     @Test
@@ -733,7 +745,10 @@ struct UsageStoreSessionQuotaTransitionTests {
             snapshot: self.antigravityLegacySnapshot(geminiUsed: 80, claudeUsed: 40))
 
         #expect(notifier.quotaWarningPosts.isEmpty)
-        let key = UsageStore.QuotaWarningStateKey(provider: .antigravity, window: .session)
+        let key = UsageStore.QuotaWarningStateKey(
+            provider: .antigravity,
+            window: .session,
+            accountDiscriminator: nil)
         #expect(store.quotaWarningState[key]?.lastRemaining == 20)
         #expect(store.quotaWarningState[key]?.source == .antigravityLegacy)
     }
@@ -776,7 +791,9 @@ struct UsageStoreSessionQuotaTransitionTests {
                 updatedAt: Date()))
 
         #expect(notifier.quotaWarningPosts.count == 1)
-        #expect(store.quotaWarningState[UsageStore.QuotaWarningStateKey(provider: .codex, window: .session)] == nil)
+        #expect(store.quotaWarningState[
+            UsageStore.QuotaWarningStateKey(provider: .codex, window: .session, accountDiscriminator: nil),
+        ] == nil)
     }
 
     private func minimaxSnapshot(sessionUsed: Double, weeklyUsed: Double) -> UsageSnapshot {

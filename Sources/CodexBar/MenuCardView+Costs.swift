@@ -18,6 +18,15 @@ extension UsageMenuCardView.Model.ProviderCostSection {
 }
 
 extension UsageMenuCardView.Model {
+    static func sakanaPayAsYouGoSection(_ usage: SakanaPayAsYouGoSnapshot?) -> ProviderCostSection? {
+        guard let usage else { return nil }
+        return ProviderCostSection(
+            title: L("Extra usage"),
+            percentUsed: nil,
+            spendLine: "\(L("Balance")): \(usage.balanceDetail)",
+            percentLine: usage.periodUsageTotal.map { "\(L("Usage")): \(UsageFormatter.usdString($0))" })
+    }
+
     static func isRequiredOpenCodeZenBalance(_ snapshot: UsageSnapshot?) -> Bool {
         snapshot?.primary == nil &&
             snapshot?.secondary == nil &&
@@ -38,6 +47,7 @@ extension UsageMenuCardView.Model {
         error: String?) -> String?
     {
         guard metadata.supportsCredits else { return nil }
+        if metadata.id == .codex, credits == nil, error == nil { return nil }
         if metadata.id == .amp,
            let ampUsage = snapshot?.ampUsage,
            let ampCredits = self.ampCreditsLine(ampUsage)
@@ -45,12 +55,35 @@ extension UsageMenuCardView.Model {
             return ampCredits
         }
         if let credits {
+            if let creditLimit = credits.codexCreditLimit {
+                return UsageFormatter.creditsString(from: creditLimit.remaining)
+            }
             return UsageFormatter.creditsString(from: credits.remaining)
         }
         if let error, !error.isEmpty {
             return error.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return L(metadata.creditsHint)
+    }
+
+    static func creditsProgressPercent(credits: CreditsSnapshot?) -> Double? {
+        credits?.codexCreditLimit?.remainingPercent
+    }
+
+    static func creditsScaleText(credits: CreditsSnapshot?) -> String? {
+        guard let limit = credits?.codexCreditLimit else { return nil }
+        return L("of %@", UsageFormatter.creditsNumberString(from: limit.limit))
+    }
+
+    static func codexCreditLimitDetail(credits: CreditsSnapshot?, now: Date) -> String? {
+        guard let limit = credits?.codexCreditLimit else { return nil }
+        var parts = [
+            L("%@ used", UsageFormatter.creditsNumberString(from: limit.used)),
+        ]
+        if let resetsAt = limit.resetsAt {
+            parts.append(L("resets %@", UsageFormatter.resetDescription(from: resetsAt, now: now)))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private static func ampCreditsLine(_ usage: AmpUsageDetails) -> String? {
@@ -69,6 +102,7 @@ extension UsageMenuCardView.Model {
     static func tokenUsageSection(
         provider: UsageProvider,
         enabled: Bool,
+        comparisonPeriodsEnabled: Bool,
         snapshot: CostUsageTokenSnapshot?,
         error: String?) -> TokenUsageSection?
     {
@@ -100,38 +134,81 @@ extension UsageMenuCardView.Model {
         let fallbackTokens = snapshot.daily.compactMap(\.totalTokens).reduce(0, +)
         let monthTokensValue = snapshot.last30DaysTokens ?? (fallbackTokens > 0 ? fallbackTokens : nil)
         let monthTokens = monthTokensValue.map { UsageFormatter.tokenCountString($0) }
-        let windowLabel = snapshot.historyLabel ?? Self.costHistoryWindowLabel(days: snapshot.historyDays)
+        let windowLabel = if let historyLabel = snapshot.historyLabel {
+            historyLabel
+        } else if provider == .mistral,
+                  snapshot.historyDays == 1,
+                  Self.bedrockLatestBillingDay(from: snapshot.daily) != nil
+        {
+            L("Latest billing day")
+        } else {
+            Self.costHistoryWindowLabel(days: snapshot.historyDays)
+        }
         let monthLine: String = {
             if let monthTokens {
                 return String(format: L("%@: %@ · %@ tokens"), windowLabel, monthCost, monthTokens)
             }
             return "\(windowLabel): \(monthCost)"
         }()
+        // Plan-metered spend over the same window (what the provider actually deducts);
+        // only providers that report it (currently Cursor) populate `meteredCostUSD`.
+        let meteredLine: String? = snapshot.meteredCostUSD.map {
+            let amount = UsageFormatter.currencyString($0, currencyCode: snapshot.currencyCode)
+            return String(format: L("Cursor-metered: %@ (%@)"), amount, windowLabel.lowercased())
+        }
         let err = (error?.isEmpty ?? true) ? nil : error
         return TokenUsageSection(
             sessionLine: sessionLine,
             monthLine: monthLine,
+            meteredLine: meteredLine,
+            comparisonLines: comparisonPeriodsEnabled
+                ? snapshot.comparisonSummaries().map {
+                    Self.costWindowLine(summary: $0, currencyCode: snapshot.currencyCode)
+                }
+                : [],
             hintLine: Self.tokenUsageHint(provider: provider),
             errorLine: err,
             errorCopyText: (error?.isEmpty ?? true) ? nil : error)
     }
 
+    static func costWindowLine(summary: CostUsageWindowSummary, currencyCode: String) -> String {
+        let label = Self.costHistoryWindowLabel(days: summary.days)
+        let cost = summary.totalCostUSD.map {
+            UsageFormatter.currencyString($0, currencyCode: currencyCode)
+        } ?? "—"
+        guard let totalTokens = summary.totalTokens else { return "\(label): \(cost)" }
+        return String(
+            format: L("%@: %@ · %@ tokens"),
+            label,
+            cost,
+            UsageFormatter.tokenCountString(totalTokens))
+    }
+
     static func tokenUsageHint(provider: UsageProvider) -> String? {
+        let lines = Self.tokenUsageHintLines(provider: provider)
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    static func tokenUsageHeader(provider _: UsageProvider) -> String {
+        L("Cost")
+    }
+
+    static func tokenUsageHintLines(provider: UsageProvider) -> [String] {
         switch provider {
         case .codex:
-            L("Estimated from local Codex logs for the selected account.")
-        case .claude:
-            UsageFormatter.costEstimateHint(provider: provider)
+            [L("codex_api_estimate_hint")]
+        case .claude, .cursor:
+            [UsageFormatter.costEstimateHint(provider: provider)]
         case .vertexai:
-            L("cost_estimate_hint")
+            [L("cost_estimate_hint")]
         case .bedrock:
-            L("AWS Cost Explorer billing can lag.")
+            [L("AWS Cost Explorer billing can lag.")]
         case .openai:
-            L("Reported by OpenAI Admin API organization usage.")
+            [L("Reported by OpenAI Admin API organization usage.")]
         case .mistral:
-            L("Reported by Mistral billing usage.")
+            [L("Reported by Mistral billing usage.")]
         default:
-            nil
+            []
         }
     }
 
@@ -232,7 +309,7 @@ extension UsageMenuCardView.Model {
         guard let cost else { return nil }
         guard provider != .synthetic else { return nil }
 
-        if provider == .factory, cost.period == "Extra usage balance" {
+        if provider == .factory || provider == .devin, cost.period == "Extra usage balance" {
             let balance = UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
             return ProviderCostSection(
                 title: L("Extra usage"),
@@ -259,7 +336,18 @@ extension UsageMenuCardView.Model {
                 percentLine: nil)
         }
 
-        if provider == .openai || provider == .claude || provider == .litellm, cost.limit <= 0 {
+        if provider == .zenmux || provider == .neuralwatt {
+            let balance = UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
+            return ProviderCostSection(
+                title: L("metric_mistral_payg"),
+                percentUsed: nil,
+                spendLine: "\(L("Balance")): \(balance)",
+                percentLine: nil)
+        }
+
+        if provider == .openai || provider == .claude || provider == .litellm || provider == .aiand,
+           cost.limit <= 0
+        {
             let spend = UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
             let periodLabel = Self.localizedPeriodLabel(cost.period ?? "Last 30 days")
             return ProviderCostSection(
@@ -273,13 +361,26 @@ extension UsageMenuCardView.Model {
             return nil
         }
 
+        if provider == .clawrouter, cost.limit <= 0 {
+            let spend = UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
+            return ProviderCostSection(
+                title: "ClawRouter spend",
+                percentUsed: nil,
+                spendLine: "\(L("This month")): \(spend)",
+                percentLine: nil)
+        }
+
         guard cost.limit > 0 else { return nil }
 
         let used: String
         let limit: String
         let title: String
 
-        if cost.currencyCode == "Quota" {
+        if provider == .clawrouter {
+            title = "Monthly budget"
+            used = UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
+            limit = UsageFormatter.currencyString(cost.limit, currencyCode: cost.currencyCode)
+        } else if cost.currencyCode == "Quota" {
             title = L("Quota usage")
             used = String(format: "%.0f", cost.used)
             limit = String(format: "%.0f", cost.limit)

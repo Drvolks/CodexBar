@@ -2,6 +2,14 @@ import AppKit
 import CodexBarCore
 import SwiftUI
 
+extension StatusItemController {
+    var fallbackProvider: UsageProvider? {
+        // Intentionally uses availability-filtered list: fallback activates when no provider
+        // can actually work, ensuring at least a codex icon is always visible.
+        self.store.enabledProviders().isEmpty ? .codex : nil
+    }
+}
+
 extension ProviderSwitcherSelection {
     var provider: UsageProvider? {
         switch self {
@@ -93,7 +101,9 @@ struct TokenAccountMenuDisplay: Equatable {
                 id: account.id,
                 label: account.label,
                 externalIdentifier: account.externalIdentifier,
-                organizationID: account.organizationID)
+                usageScope: account.usageScope,
+                organizationID: account.organizationID,
+                workspaceID: account.workspaceID)
         }
     }
 
@@ -111,7 +121,9 @@ struct TokenAccountMenuDisplay: Equatable {
         let id: UUID
         let label: String
         let externalIdentifier: String?
+        let usageScope: String?
         let organizationID: String?
+        let workspaceID: String?
     }
 
     private struct SnapshotIdentity: Equatable {
