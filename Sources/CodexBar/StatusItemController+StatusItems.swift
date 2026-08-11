@@ -38,10 +38,10 @@ extension StatusItemController {
                 let item = self.lazyStatusItem(for: provider)
 
                 if self.isEnabled(provider) {
-                    if self.providerMenus[provider] == nil {
-                        self.providerMenus[provider] = self.makeMenu(for: provider)
+                    if self.providerMenus[provider.instanceID] == nil {
+                        self.providerMenus[provider.instanceID] = self.makeMenu(for: provider)
                     }
-                    let menu = self.providerMenus[provider]
+                    let menu = self.providerMenus[provider.instanceID]
                     if item.menu !== menu {
                         item.menu = menu
                     }
@@ -53,7 +53,7 @@ extension StatusItemController {
                         item.menu = self.fallbackMenu
                     }
                 }
-            } else if let item = self.statusItems[provider] {
+            } else if let item = self.statusItems[provider.instanceID] {
                 item.menu = nil
             }
         }
@@ -78,13 +78,20 @@ extension StatusItemController {
         }
         let fallback = self.fallbackProvider
         let force = self.store.debugForceAnimation
-        for provider in ordered where self.isEnabled(provider) || fallback == provider || force {
+        for instanceID in ordered {
+            guard let provider = instanceID.firstPartyProvider,
+                  self.isEnabled(provider) || fallback == provider || force
+            else { continue }
             _ = self.lazyStatusItem(for: provider)
         }
     }
 
     func removeProviderStatusItem(for provider: UsageProvider) {
-        if let menu = self.providerMenus.removeValue(forKey: provider) {
+        self.removeProviderStatusItem(for: provider.instanceID)
+    }
+
+    func removeProviderStatusItem(for instanceID: ProviderInstanceID) {
+        if let menu = self.providerMenus.removeValue(forKey: instanceID) {
             let menuID = ObjectIdentifier(menu)
             if menuID == self.providerSwitcherShortcutMenuID {
                 self.removeProviderSwitcherShortcutMonitor()
@@ -93,9 +100,9 @@ extension StatusItemController {
             self.removeMenuLifecycleState(menuID)
         }
 
-        guard let item = self.statusItems.removeValue(forKey: provider) else { return }
+        guard let item = self.statusItems.removeValue(forKey: instanceID) else { return }
         item.menu = nil
-        self.lastAppliedProviderIconRenderSignatures.removeValue(forKey: provider)
+        self.lastAppliedProviderIconRenderSignatures.removeValue(forKey: instanceID)
         self.statusBar.removeStatusItem(item)
     }
 

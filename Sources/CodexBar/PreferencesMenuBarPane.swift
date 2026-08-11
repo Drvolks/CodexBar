@@ -277,7 +277,7 @@ struct MenuBarPane: View {
         Binding(
             get: {
                 self.settings
-                    .menuBarMetricPreference(for: provider, snapshot: self.store.snapshot(for: provider))
+                    .menuBarMetricPreference(for: provider, snapshot: self.store.snapshot(for: provider.instanceID))
                     .rawValue
             },
             set: { rawValue in
@@ -288,7 +288,7 @@ struct MenuBarPane: View {
 
     private func selectedMetricTitle(for provider: UsageProvider) -> String {
         let rawValue = self.settings
-            .menuBarMetricPreference(for: provider, snapshot: self.store.snapshot(for: provider))
+            .menuBarMetricPreference(for: provider, snapshot: self.store.snapshot(for: provider.instanceID))
             .rawValue
         return self.metricOptions(for: provider).first(where: { $0.id == rawValue })?.title
             ?? MenuBarMetricPreference.automatic.label
@@ -303,14 +303,14 @@ struct MenuBarPane: View {
                     title: L("primary_api_key_limit")),
             ]
         }
-        if SettingsStore.isBalanceOnlyProvider(provider) {
+        if ProviderDescriptorRegistry.descriptor(for: provider).menuBarMetrics.supported == [.automatic] {
             return [
                 MenuBarPaneMetricOption(id: MenuBarMetricPreference.automatic.rawValue, title: L("Automatic")),
             ]
         }
 
         let metadata = self.store.metadata(for: provider)
-        let snapshot = self.store.snapshot(for: provider)
+        let snapshot = self.store.snapshot(for: provider.instanceID)
         var options: [MenuBarPaneMetricOption] = [
             MenuBarPaneMetricOption(id: MenuBarMetricPreference.automatic.rawValue, title: L("automatic")),
             MenuBarPaneMetricOption(
@@ -340,7 +340,7 @@ struct MenuBarPane: View {
     }
 
     private var activeProvidersInOrder: [UsageProvider] {
-        self.store.enabledProviders()
+        self.store.enabledFirstPartyProviders()
     }
 
     private var overviewSelectedProviders: [UsageProvider] {

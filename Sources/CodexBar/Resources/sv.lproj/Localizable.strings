@@ -1,5 +1,28 @@
 /* Swedish localization for CodexBar */
 
+/* iCloud Sync */
+"iCloud Sync" = "iCloud Sync";
+"Sync settings and providers across your Macs via iCloud" = "Sync settings and providers across your Macs via iCloud";
+"Include API keys, cookies, and tokens" = "Include API keys, cookies, and tokens";
+"Sync usage snapshots" = "Sync usage snapshots";
+"Show accounts from other Macs" = "Show accounts from other Macs";
+"Requires a signed release build of CodexBar." = "Requires a signed release build of CodexBar.";
+"Sign in to iCloud in System Settings to enable sync." = "Sign in to iCloud in System Settings to enable sync.";
+"iCloud access is restricted on this Mac." = "iCloud access is restricted on this Mac.";
+"Sync is paused: another Mac uses a newer version of CodexBar. Update to resume." = "Sync is paused: another Mac uses a newer version of CodexBar. Update to resume.";
+"Last successful fetch" = "Last successful fetch";
+"Last successful push" = "Last successful push";
+"Never" = "Never";
+"Macs" = "Macs";
+"No synced Macs yet." = "No synced Macs yet.";
+"Secrets use iCloud end-to-end encryption via encryptedValues. Hooks and machine-local paths never sync." = "Secrets use iCloud end-to-end encryption via encryptedValues. Hooks and machine-local paths never sync.";
+"Last seen %@" = "Last seen %@";
+"This Mac" = "This Mac";
+"another Mac" = "another Mac";
+"%dm ago" = "%dm ago";
+"%dh ago" = "%dh ago";
+"%dd ago" = "%dd ago";
+
 "tab_hooks" = "Hooks";
 "hooks_enable_title" = "Aktivera hooks";
 "hooks_enable_subtitle" = "Kör externa kommandon vid kvot- eller leverantörshändelser.";
@@ -21,7 +44,7 @@
 "hooks_delete_argument" = "Ta bort argument";
 
 "ollama_safari_cookie_access_hint" = "Safari-cookies kräver full skivåtkomst för CodexBar (Systeminställningar > Integritet och säkerhet).";
-"ollama_browser_cookie_decryption_denied" = "Dekryptering av %@-cookies nekades i Nyckelhanteraren; försök igen med en manuell uppdatering.";
+"ollama_browser_cookie_decryption_denied" = "Dekryptering av %@-cookies nekades i Nyckelhanteraren. Öppna leverantörskortet och klicka på Uppdatera (⌘R) för att begära åtkomst till Nyckelhanteraren igen.";
 "ollama_browser_cookie_decryption_disabled" = "Dekryptering av %@-cookies är inaktiverad i CodexBar; aktivera åtkomst till Nyckelhanteraren och uppdatera.";
 
 " providers" = " leverantörer";
@@ -429,6 +452,9 @@
 "section_agent_sessions" = "Agentsessioner";
 "language_title" = "Språk";
 "language_subtitle" = "Byt visningsspråk. Appen behöver startas om för att ändringen ska slå igenom helt.";
+"currency_title" = "Önskad valuta";
+"currency_subtitle" = "Valuta för kostnadsuppskattningar och utgifter. Använder växelkurser som uppdateras dagligen.";
+"currency_auto" = "Automatiskt (följ leverantör / USD)";
 "language_system" = "System";
 "language_english" = "English";
 "language_spanish" = "Español";
@@ -583,7 +609,7 @@
 "show_provider_changelog_links_title" = "Visa länkar till leverantörers ändringsloggar";
 "show_provider_changelog_links_subtitle" = "Lägger till länkar till utgåvekommentarer för stödda CLI-baserade leverantörer i menyn.";
 "show_credits_extra_usage_title" = "Visa krediter och extra användning";
-"show_credits_extra_usage_subtitle" = "Visa avsnitt för Codex-krediter och Claude Extra-användning i menyn.";
+"show_credits_extra_usage_subtitle" = "Visa krediter och extra användning för leverantörer som stöds.";
 "multi_account_layout_title" = "Layout för flera konton";
 "multi_account_layout_subtitle" = "Välj segmenterad kontoväxling eller staplade kontokort.";
 "multi_account_layout_segmented" = "Segmenterad";
@@ -639,6 +665,8 @@
 "copyright" = "© 2026 Peter Steinberger. MIT-licens.";
 
 /* Debug Pane */
+"use_javascriptcore_plugin_engine" = "Använd JavaScriptCore för leverantörsinsticksfiler";
+"use_javascriptcore_plugin_engine_subtitle" = "Endast kompatibilitetsåterställning. Starta om CodexBar för att tillämpa; CODEXBAR_PLUGIN_ENGINE åsidosätter inställningen.";
 "section_logging" = "Loggning";
 "enable_file_logging" = "Aktivera filloggning";
 "enable_file_logging_subtitle" = "Skriv loggar till %@ för felsökning.";
@@ -812,7 +840,7 @@
 "Pace: %@" = "Takt: %@";
 "Pace: %@ · %@" = "Takt: %@ · %@";
 "%@ · %@" = "%@ · %@";
-"≈ %d%% run-out risk" = "≈ %d %% risk att ta slut";
+"(%d%% risk)" = "(%d %% risk att ta slut)";
 "%d%% in deficit" = "%d %% underskott";
 "%d%% in reserve" = "%d %% reserv";
 "usage_percent_suffix_left" = "kvar";
@@ -1214,6 +1242,8 @@
 "section_links" = "Länkar";
 "Show Codex Spark usage" = "Visa Codex Spark-användning";
 "Shows Codex Spark quota rows in the menu and provider preview. Requires optional credits and extra usage in Display settings." = "Visar kvotrader för Codex Spark i menyn och i förhandsvisningen för leverantören. Kräver att ”Visa krediter och extra användning” är aktiverat under Visning i Inställningar.";
+"Show Daily Routines usage" = "Visa användning för Dagliga rutiner";
+"Shows the Daily Routines quota row in the menu and provider preview. Requires optional credits and extra usage in Display settings." = "Visar kvotraden för Dagliga rutiner i menyn och i förhandsvisningen för leverantören. Kräver att ”Visa krediter och extra användning” är aktiverat under Visning i Inställningar.";
 "Scroll to see more models" = "Rulla för att se fler modeller";
 "Copy Image" = "Kopiera bild";
 "Copy Stats" = "Kopiera statistik";
@@ -1271,6 +1301,9 @@
 "Weekly cannot run out before reset at this pace" = "Veckokvoten kan inte ta slut före återställningen i den här takten";
 "Weekly can run out ≈%d windows early" = "Veckokvoten kan ta slut ≈%d fönster tidigare";
 "Estimated: %@" = "Uppskattning: %@";
+"session_quota_estimate_value_format" = "%1$@ %2$@";
+"session quota" = "sessionskvot";
+"session quotas" = "sessionskvoter";
 "Coding Plan" = "Kodningsplan";
 "Agent Plan" = "Agentplan";
 "Team" = "Team";
@@ -1314,7 +1347,11 @@
 "menu_bar_layout_token_account" = "Konto";
 "menu_bar_layout_token_session" = "Session %";
 "menu_bar_layout_token_weekly" = "Vecka %";
+"menu_bar_layout_token_scoped_weekly" = "Avgränsad vecka %";
 "menu_bar_layout_token_auto" = "Automatiskt %";
+"menu_bar_layout_token_session_pace" = "Sessionstakt";
+"menu_bar_layout_token_weekly_pace" = "Veckotakt";
+"menu_bar_layout_token_auto_pace" = "Automatisk takt";
 "menu_bar_layout_token_bar" = "Användningsstapel";
 "menu_bar_layout_token_resets_in" = "Återställs om";
 "menu_bar_layout_token_reset_at" = "Återställs kl.";
@@ -1340,3 +1377,56 @@
 "Cost today unavailable" = "Kostnad idag: Inte tillgänglig";
 "30-day cost unavailable" = "Kostnad 30 dagar: Inte tillgänglig";
 "Resets" = "Återställningar";
+"Finish now" = "Slutför nu";
+"Continue in background" = "Fortsätt i bakgrunden";
+
+"Cumulative" = "Kumulativt";
+"Token activity" = "Token-aktivitet";
+"View" = "Vy";
+"in the last year" = "det senaste året";
+"No activity in the last 12 months" = "Ingen aktivitet de senaste 12 månaderna";
+"Each column = 1 week" = "Varje kolumn = 1 vecka";
+"Running total" = "Löpande summa";
+"Less" = "Mindre";
+"More" = "Mer";
+
+/* Provider Plugins */
+"Install…" = "Installera…";
+"Install plugin" = "Installera plugin";
+"Copies a JavaScript or TypeScript file into the plugins directory." = "Kopierar en JavaScript- eller TypeScript-fil till pluginmappen.";
+"Show in Finder" = "Visa i Finder";
+"Plugins directory" = "Pluginmapp";
+"Provider Plugins" = "Leverantörsplugin";
+"Plugins are local JavaScript or TypeScript files. Network and cookie access require approval." = "Plugin är lokala JavaScript- eller TypeScript-filer. Åtkomst till nätverk och cookies kräver godkännande.";
+"No Plugins Installed" = "Inga plugin installerade";
+"Drop a .js or .ts file into the plugins directory, or choose Install…" = "Släpp en .js- eller .ts-fil i pluginmappen eller välj Installera…";
+"Delete Plugin?" = "Ta bort plugin?";
+"Delete" = "Ta bort";
+"This removes the plugin file, transpile cache, approval, saved settings and secrets, and history." = "Detta tar bort pluginfilen, transpileringscachen, godkännandet, sparade inställningar och hemligheter samt historiken.";
+"Plugin Error" = "Pluginfel";
+"Needs approval" = "Kräver godkännande";
+"File" = "Fil";
+"Origins" = "Ursprungsadresser";
+"Configure endpoint settings" = "Konfigurera slutpunktsinställningar";
+"Capabilities" = "Behörigheter";
+"Network" = "Nätverk";
+"Cookie domains" = "Cookie-domäner";
+"Approve…" = "Godkänn…";
+"Delete…" = "Ta bort…";
+"Unknown validation error" = "Okänt valideringsfel";
+"Approve Plugin" = "Godkänn plugin";
+"Install and Approve Plugin" = "Installera och godkänn plugin";
+"Network authority" = "Omfattning av nätverksåtkomst";
+"Auth: %@" = "Autentisering: %@";
+"Capabilities: %@" = "Behörigheter: %@";
+"network" = "nätverk";
+"Secrets: %@" = "Hemligheter: %@";
+"none" = "inga";
+"Cookie domains: %@" = "Cookie-domäner: %@";
+"Type %@ to confirm" = "Skriv %@ för att bekräfta";
+"Enter every endpoint setting to review the exact network origins." = "Ange alla slutpunktsinställningar för att granska de exakta ursprungsadresserna.";
+"Approve" = "Godkänn";
+"Install" = "Installera";
+"5-hour usage" = "5-timmarsanvändning";
+"7-day usage" = "7-dagarsanvändning";
+"Total usage" = "Total användning";

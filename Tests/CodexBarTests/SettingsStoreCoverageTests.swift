@@ -174,6 +174,33 @@ struct SettingsStoreCoverageTests {
     }
 
     @Test
+    func `background low power mode defaults off persists and drives effective web saver`() throws {
+        let suite = "SettingsStoreCoverageTests-background-low-power"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let configStore = testConfigStore(suiteName: suite)
+
+        let initial = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
+        #expect(initial.backgroundWorkLowPowerModeEnabled == false)
+        #expect(defaults.object(forKey: "backgroundWorkLowPowerModeEnabled") == nil)
+        #expect(initial.effectiveOpenAIWebBatterySaverEnabled == false)
+
+        let revision = initial.backgroundWorkSettingsRevision
+        initial.backgroundWorkLowPowerModeEnabled = true
+
+        #expect(initial.backgroundWorkSettingsRevision == revision + 1)
+        #expect(initial.effectiveOpenAIWebBatterySaverEnabled)
+
+        let reloaded = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
+        #expect(reloaded.backgroundWorkLowPowerModeEnabled)
+        #expect(reloaded.effectiveOpenAIWebBatterySaverEnabled)
+
+        reloaded.backgroundWorkLowPowerModeEnabled = false
+        reloaded.openAIWebBatterySaverEnabled = true
+        #expect(reloaded.effectiveOpenAIWebBatterySaverEnabled)
+    }
+
+    @Test
     func `multi account menu layout persists and bridges legacy show all token accounts`() throws {
         let suite = "SettingsStoreCoverageTests-multi-account-layout"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -355,7 +382,7 @@ struct SettingsStoreCoverageTests {
 
         let snapshot = settings.claudeSettingsSnapshot(tokenOverride: nil)
 
-        #expect(snapshot.usageDataSource == .auto)
+        #expect(snapshot.usageDataSource == .oauth)
         #expect(snapshot.cookieSource == .off)
         #expect(snapshot.manualCookieHeader?.isEmpty == true)
     }
@@ -367,7 +394,7 @@ struct SettingsStoreCoverageTests {
 
         let snapshot = settings.claudeSettingsSnapshot(tokenOverride: nil)
 
-        #expect(snapshot.usageDataSource == .auto)
+        #expect(snapshot.usageDataSource == .web)
         #expect(snapshot.cookieSource == .manual)
         #expect(snapshot.manualCookieHeader == "sessionKey=sk-ant-session-token")
     }
@@ -525,7 +552,7 @@ struct SettingsStoreCoverageTests {
         settings.ensureTokenAccountsLoaded()
 
         #expect(settings.zaiAPIToken.isEmpty)
-        #expect(settings.syntheticAPIToken.isEmpty)
+        #expect(settings[providerConfig: .synthetic, field: .apiKey].isEmpty)
     }
 
     @Test
@@ -845,6 +872,21 @@ struct SettingsStoreCoverageTests {
         #expect(defaults.object(forKey: "weeklyProgressWorkDays") == nil)
         let reloaded4 = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
         #expect(reloaded4.weeklyProgressWorkDays == nil)
+    }
+
+    @Test
+    func `preferred currency defaults to USD and persists an explicit selection`() throws {
+        let suite = "SettingsStoreCoverageTests-preferred-currency"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let configStore = testConfigStore(suiteName: suite)
+
+        let fresh = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
+        #expect(fresh.preferredCurrencyCode == "USD")
+
+        fresh.preferredCurrencyCode = "GBP"
+        let reloaded = Self.makeSettingsStore(userDefaults: defaults, configStore: configStore)
+        #expect(reloaded.preferredCurrencyCode == "GBP")
     }
 
     private static func makeSettingsStore(

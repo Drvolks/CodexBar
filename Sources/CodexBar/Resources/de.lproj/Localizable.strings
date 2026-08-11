@@ -1,5 +1,28 @@
 /* English localization for CodexBar (base/fallback) */
 
+/* iCloud Sync */
+"iCloud Sync" = "iCloud Sync";
+"Sync settings and providers across your Macs via iCloud" = "Sync settings and providers across your Macs via iCloud";
+"Include API keys, cookies, and tokens" = "Include API keys, cookies, and tokens";
+"Sync usage snapshots" = "Sync usage snapshots";
+"Show accounts from other Macs" = "Show accounts from other Macs";
+"Requires a signed release build of CodexBar." = "Requires a signed release build of CodexBar.";
+"Sign in to iCloud in System Settings to enable sync." = "Sign in to iCloud in System Settings to enable sync.";
+"iCloud access is restricted on this Mac." = "iCloud access is restricted on this Mac.";
+"Sync is paused: another Mac uses a newer version of CodexBar. Update to resume." = "Sync is paused: another Mac uses a newer version of CodexBar. Update to resume.";
+"Last successful fetch" = "Last successful fetch";
+"Last successful push" = "Last successful push";
+"Never" = "Never";
+"Macs" = "Macs";
+"No synced Macs yet." = "No synced Macs yet.";
+"Secrets use iCloud end-to-end encryption via encryptedValues. Hooks and machine-local paths never sync." = "Secrets use iCloud end-to-end encryption via encryptedValues. Hooks and machine-local paths never sync.";
+"Last seen %@" = "Last seen %@";
+"This Mac" = "This Mac";
+"another Mac" = "another Mac";
+"%dm ago" = "%dm ago";
+"%dh ago" = "%dh ago";
+"%dd ago" = "%dd ago";
+
 "tab_hooks" = "Hooks";
 "hooks_enable_title" = "Hooks aktivieren";
 "hooks_enable_subtitle" = "Externe Befehle bei Kontingent- oder Anbieterereignissen ausführen.";
@@ -21,7 +44,7 @@
 "hooks_delete_argument" = "Argument löschen";
 
 "ollama_safari_cookie_access_hint" = "Safari-Cookies benötigen vollen Festplattenzugriff für CodexBar (Systemeinstellungen > Datenschutz & Sicherheit).";
-"ollama_browser_cookie_decryption_denied" = "Die Entschlüsselung der %@-Cookies wurde im Schlüsselbund abgelehnt; versuchen Sie es mit einer manuellen Aktualisierung erneut.";
+"ollama_browser_cookie_decryption_denied" = "Die Entschlüsselung der %@-Cookies wurde im Schlüsselbund abgelehnt. Öffne die Anbieterkarte und klicke auf „Aktualisieren“ (⌘R), um erneut Schlüsselbundzugriff anzufordern.";
 "ollama_browser_cookie_decryption_disabled" = "Die Entschlüsselung der %@-Cookies ist in CodexBar deaktiviert; aktivieren Sie den Schlüsselbundzugriff und aktualisieren Sie.";
 
 " providers" = "Anbieter";
@@ -426,6 +449,9 @@
 "section_agent_sessions" = "Agenten-Sitzungen";
 "language_title" = "Sprache";
 "language_subtitle" = "Anzeigesprache wechseln. Ein App-Neustart wird empfohlen.";
+"currency_title" = "Bevorzugte Währung";
+"currency_subtitle" = "Währung für Kostenschätzungen und Ausgaben. Verwendet täglich aktualisierte Wechselkurse.";
+"currency_auto" = "Automatisch (Anbieter / USD)";
 "language_system" = "System";
 "language_english" = "Englisch";
 "language_spanish" = "Español";
@@ -582,7 +608,7 @@
 "show_provider_changelog_links_title" = "Links zum Änderungsprotokoll des Anbieters anzeigen";
 "show_provider_changelog_links_subtitle" = "Fügt dem Menü Versionshinweise-Links für unterstützte CLI-gestützte Anbieter hinzu.";
 "show_credits_extra_usage_title" = "Credits + zusätzliche Nutzung anzeigen";
-"show_credits_extra_usage_subtitle" = "Zeigen Sie die Nutzungsabschnitte \"Codex Credits\" und \"Claude Extra\" im Menü an.";
+"show_credits_extra_usage_subtitle" = "Zeigt Guthaben und zusätzliche Nutzung für unterstützte Anbieter.";
 "multi_account_layout_title" = "Layout für mehrere Konten";
 "multi_account_layout_subtitle" = "Wählen Sie segmentierte Kontoumschaltung oder gestapelte Kontokarten.";
 "multi_account_layout_segmented" = "Segmentiert";
@@ -638,6 +664,8 @@
 "copyright" = "© 2026 Peter Steinberger. MIT-Lizenz.";
 
 /* Debug Pane */
+"use_javascriptcore_plugin_engine" = "JavaScriptCore für Anbieter-Plugins verwenden";
+"use_javascriptcore_plugin_engine_subtitle" = "Nur als Kompatibilitäts-Rollback. CodexBar zum Anwenden neu starten; CODEXBAR_PLUGIN_ENGINE überschreibt diese Einstellung.";
 "section_logging" = "Protokollierung";
 "enable_file_logging" = "Aktivieren Sie die Dateiprotokollierung";
 "enable_file_logging_subtitle" = "Schreiben Sie Protokolle zum Debuggen in %@.";
@@ -811,7 +839,7 @@
 "Pace: %@" = "Tempo: %@";
 "Pace: %@ · %@" = "Tempo: %@ · %@";
 "%@ · %@" = "%@ · %@";
-"≈ %d%% run-out risk" = "≈ %d%% Auslaufrisiko";
+"(%d%% risk)" = "(%d%% Auslaufrisiko)";
 "%d%% in deficit" = "%d%% im Defizit";
 "%d%% in reserve" = "%d%% in Reserve";
 "usage_percent_suffix_left" = "übrig";
@@ -1215,6 +1243,8 @@
 "section_links" = "Links";
 "Show Codex Spark usage" = "Codex-Spark-Nutzung anzeigen";
 "Shows Codex Spark quota rows in the menu and provider preview. Requires optional credits and extra usage in Display settings." = "Zeigt die Codex-Spark-Kontingentzeilen im Menü und in der Anbietervorschau an. Erfordert, dass „Credits + zusätzliche Nutzung anzeigen“ in den Anzeigeeinstellungen aktiviert ist.";
+"Show Daily Routines usage" = "Nutzung von „Tägliche Routinen“ anzeigen";
+"Shows the Daily Routines quota row in the menu and provider preview. Requires optional credits and extra usage in Display settings." = "Zeigt die Kontingentzeile „Tägliche Routinen“ im Menü und in der Anbietervorschau an. Erfordert, dass „Credits + zusätzliche Nutzung anzeigen“ in den Anzeigeeinstellungen aktiviert ist.";
 "Scroll to see more models" = "Scrollen, um weitere Modelle zu sehen";
 "Copy Image" = "Bild kopieren";
 "Copy Stats" = "Statistiken kopieren";
@@ -1273,6 +1303,9 @@
 "Weekly cannot run out before reset at this pace" = "Das Wochenlimit kann bei diesem Tempo nicht vor dem Reset aufgebraucht sein";
 "Weekly can run out ≈%d windows early" = "Das Wochenlimit kann ≈%d Fenster früher aufgebraucht sein";
 "Estimated: %@" = "Geschätzt: %@";
+"session_quota_estimate_value_format" = "%1$@ %2$@";
+"session quota" = "Sitzungskontingent";
+"session quotas" = "Sitzungskontingente";
 "Coding Plan" = "Coding-Plan";
 "Agent Plan" = "Agentenplan";
 "Team" = "Team";
@@ -1316,7 +1349,11 @@
 "menu_bar_layout_token_account" = "Konto";
 "menu_bar_layout_token_session" = "Sitzung %";
 "menu_bar_layout_token_weekly" = "Wöchentlich %";
+"menu_bar_layout_token_scoped_weekly" = "Wöchentlich nach Bereich %";
 "menu_bar_layout_token_auto" = "Automatisch %";
+"menu_bar_layout_token_session_pace" = "Sitzungstempo";
+"menu_bar_layout_token_weekly_pace" = "Wochentempo";
+"menu_bar_layout_token_auto_pace" = "Automatisches Tempo";
 "menu_bar_layout_token_bar" = "Nutzungsleiste";
 "menu_bar_layout_token_resets_in" = "Zurücksetzung in";
 "menu_bar_layout_token_reset_at" = "Zurücksetzung um";
@@ -1342,3 +1379,56 @@
 "Cost today unavailable" = "Kosten heute: Nicht verfügbar";
 "30-day cost unavailable" = "Kosten 30 Tage: Nicht verfügbar";
 "Resets" = "Zurücksetzungen";
+"Finish now" = "Jetzt abschließen";
+"Continue in background" = "Im Hintergrund fortfahren";
+
+"Cumulative" = "Kumulativ";
+"Token activity" = "Token-Aktivität";
+"View" = "Ansicht";
+"in the last year" = "im letzten Jahr";
+"No activity in the last 12 months" = "Keine Aktivität in den letzten 12 Monaten";
+"Each column = 1 week" = "Jede Spalte = 1 Woche";
+"Running total" = "Laufende Summe";
+"Less" = "Weniger";
+"More" = "Mehr";
+
+/* Provider Plugins */
+"Install…" = "Installieren…";
+"Install plugin" = "Plugin installieren";
+"Copies a JavaScript or TypeScript file into the plugins directory." = "Kopiert eine JavaScript- oder TypeScript-Datei in das Plugin-Verzeichnis.";
+"Show in Finder" = "Im Finder anzeigen";
+"Plugins directory" = "Plugin-Verzeichnis";
+"Provider Plugins" = "Anbieter-Plugins";
+"Plugins are local JavaScript or TypeScript files. Network and cookie access require approval." = "Plugins sind lokale JavaScript- oder TypeScript-Dateien. Der Zugriff auf Netzwerk und Cookies muss genehmigt werden.";
+"No Plugins Installed" = "Keine Plugins installiert";
+"Drop a .js or .ts file into the plugins directory, or choose Install…" = "Legen Sie eine .js- oder .ts-Datei im Plugin-Verzeichnis ab oder wählen Sie „Installieren…“.";
+"Delete Plugin?" = "Plugin löschen?";
+"Delete" = "Löschen";
+"This removes the plugin file, transpile cache, approval, saved settings and secrets, and history." = "Dadurch werden die Plugin-Datei, der Transpilierungs-Cache, die Genehmigung, gespeicherte Einstellungen und Geheimnisse sowie der Verlauf entfernt.";
+"Plugin Error" = "Plugin-Fehler";
+"Needs approval" = "Genehmigung erforderlich";
+"File" = "Datei";
+"Origins" = "Ursprünge";
+"Configure endpoint settings" = "Endpunkt-Einstellungen konfigurieren";
+"Capabilities" = "Funktionen";
+"Network" = "Netzwerk";
+"Cookie domains" = "Cookie-Domains";
+"Approve…" = "Genehmigen…";
+"Delete…" = "Löschen…";
+"Unknown validation error" = "Unbekannter Validierungsfehler";
+"Approve Plugin" = "Plugin genehmigen";
+"Install and Approve Plugin" = "Plugin installieren und genehmigen";
+"Network authority" = "Netzwerkberechtigungen";
+"Auth: %@" = "Authentifizierung: %@";
+"Capabilities: %@" = "Funktionen: %@";
+"network" = "Netzwerk";
+"Secrets: %@" = "Geheimnisse: %@";
+"none" = "keine";
+"Cookie domains: %@" = "Cookie-Domains: %@";
+"Type %@ to confirm" = "Geben Sie zur Bestätigung %@ ein";
+"Enter every endpoint setting to review the exact network origins." = "Geben Sie alle Endpunkt-Einstellungen ein, um die genauen Netzwerkursprünge zu prüfen.";
+"Approve" = "Genehmigen";
+"Install" = "Installieren";
+"5-hour usage" = "5-Stunden-Nutzung";
+"7-day usage" = "7-Tage-Nutzung";
+"Total usage" = "Gesamtnutzung";

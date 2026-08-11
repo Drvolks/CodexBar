@@ -8,6 +8,24 @@ import Testing
 @Suite(.serialized)
 struct ProviderSettingsDescriptorTests {
     @Test
+    func `provider settings refresh enables explicit browser retry`() async {
+        var observedInteraction: ProviderInteraction?
+        var browserRetryAllowed = false
+
+        await KeychainAccessGate.withTaskOverrideForTesting(false) {
+            await BrowserCookieAccessGate.withDeniedBrowsersForTesting([.chrome]) {
+                await ProviderSettingsRefreshInteraction.perform {
+                    observedInteraction = ProviderInteractionContext.current
+                    browserRetryAllowed = BrowserCookieAccessGate.shouldAttempt(.chrome)
+                }
+            }
+        }
+
+        #expect(observedInteraction == .userInitiated)
+        #expect(browserRetryAllowed)
+    }
+
+    @Test
     func `toggle I ds are unique across providers`() throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-unique")
         var seenToggleIDs: Set<String> = []
@@ -47,7 +65,7 @@ struct ProviderSettingsDescriptorTests {
 
         #expect(project.title == "Project ID")
         #expect(project.subtitle.contains(OpenAIAPISettingsReader.projectIDEnvironmentKey))
-        #expect(fixture.settings.openAIAPIProjectID == "proj_abc")
+        #expect(fixture.settings[providerConfig: .openai, field: .secretWorkspace(logField: "projectID")] == "proj_abc")
         #expect(fixture.settings.providerConfig(for: .openai)?.sanitizedWorkspaceID == "proj_abc")
     }
 
@@ -75,11 +93,11 @@ struct ProviderSettingsDescriptorTests {
                         provider: provider,
                         cookieHeader: "new-test-cookie",
                         sourceLabel: "Test new")
-                    fixture.store.snapshots[provider] = UsageSnapshot(
+                    fixture.store.snapshots[provider.instanceID] = UsageSnapshot(
                         primary: nil,
                         secondary: nil,
                         updatedAt: Date())
-                    fixture.store.lastSourceLabels[provider] = "web"
+                    fixture.store.lastSourceLabels[provider.instanceID] = "web"
                 }
                 defer { fixture.store._test_providerRefreshOverride = nil }
 
@@ -90,6 +108,28 @@ struct ProviderSettingsDescriptorTests {
                 #expect(picker.trailingText?()?.contains("Test new") == true)
             }
         }
+    }
+
+    @Test
+    func `ollama automatic cookie source exposes validated refresh action`() throws {
+        let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-ollama-refresh")
+        let context = fixture.settingsContext(provider: .ollama)
+        let pickers = OllamaProviderImplementation().settingsPickers(context: context)
+        let picker = try #require(pickers.first { $0.id == "ollama-cookie-source" })
+        let action = try #require(picker.trailingActions.first)
+
+        #expect(action.id == "ollama-reimport-cookie")
+        #expect(action.title == "Refresh")
+        #expect(action.isVisible?() == true)
+
+        fixture.settings.ollamaCookieSource = .manual
+        #expect(action.isVisible?() == false)
+        #expect(picker.trailingText?() == nil)
+
+        fixture.settings.ollamaCookieSource = .auto
+        fixture.settings.ollamaUsageDataSource = .api
+        #expect(action.isVisible?() == false)
+        #expect(picker.trailingText?() == nil)
     }
 
     @Test
@@ -111,11 +151,11 @@ struct ProviderSettingsDescriptorTests {
                         provider: provider,
                         cookieHeader: "invalid-test-cookie",
                         sourceLabel: "Test invalid")
-                    fixture.store.snapshots[provider] = UsageSnapshot(
+                    fixture.store.snapshots[provider.instanceID] = UsageSnapshot(
                         primary: nil,
                         secondary: nil,
                         updatedAt: Date())
-                    fixture.store.lastSourceLabels[provider] = "local"
+                    fixture.store.lastSourceLabels[provider.instanceID] = "local"
                 }
                 defer { fixture.store._test_providerRefreshOverride = nil }
 
@@ -151,7 +191,7 @@ struct ProviderSettingsDescriptorTests {
                         provider: provider,
                         cookieHeader: "unvalidated-test-cookie",
                         sourceLabel: "Test unvalidated")
-                    fixture.store.snapshots.removeValue(forKey: provider)
+                    fixture.store.snapshots.removeValue(forKey: provider.instanceID)
                 }
                 defer { fixture.store._test_providerRefreshOverride = nil }
 
@@ -283,6 +323,25 @@ struct ProviderSettingsDescriptorTests {
         #expect(optionIDs.contains(ClaudeOAuthKeychainPromptMode.onlyOnUserAction.rawValue))
         #expect(optionIDs.contains(ClaudeOAuthKeychainPromptMode.always.rawValue))
         #expect(keychainPicker.isEnabled?() ?? true)
+    }
+
+    @Test
+    func `claude daily routines toggle follows global optional usage setting`() throws {
+        let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-claude-routines")
+        let context = fixture.settingsContext(provider: .claude)
+        let toggles = ClaudeProviderImplementation().settingsToggles(context: context)
+        let routinesToggle = try #require(toggles.first {
+            $0.id == "claude-daily-routines-usage-visible"
+        })
+
+        #expect(routinesToggle.binding.wrappedValue)
+        #expect(routinesToggle.isEnabled?() == true)
+
+        routinesToggle.binding.wrappedValue = false
+        #expect(fixture.settings.claudeDailyRoutinesUsageVisible == false)
+
+        fixture.settings.showOptionalCreditsAndExtraUsage = false
+        #expect(routinesToggle.isEnabled?() == false)
     }
 
     @Test
@@ -431,7 +490,8 @@ struct ProviderSettingsDescriptorTests {
         let usagePicker = try #require(pickers.first(where: { $0.id == "kimi-usage-source" }))
         #expect(usagePicker.options.map(\.id) == ["auto", "api", "web"])
         #expect(usagePicker.subtitle ==
-            "Auto tries your configured API key, then a signed-in Kimi Code CLI credential, then browser cookies.")
+            "Kimi Code subscription usage from api.kimi.com. Auto tries your configured API key, then a signed-in " +
+            "Kimi Code CLI credential, then web cookies. China Open Platform balance is a separate provider.")
         #expect(usagePicker.placement == .connection)
         #expect(usagePicker.trailingText?() == nil)
         fixture.store.lastSourceLabels[.kimi] = "Kimi Code CLI"
@@ -487,6 +547,20 @@ struct ProviderSettingsDescriptorTests {
 
 extension ProviderSettingsDescriptorTests {
     @Test
+    func `zoommate presentation surfaces web rather than an undetected version`() throws {
+        let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-zoommate-presentation")
+        let metadata = try #require(ProviderDescriptorRegistry.metadata[.zoommate])
+        let context = fixture.presentationContext(provider: .zoommate, metadata: metadata)
+
+        let detailLine = ZoomMateProviderImplementation()
+            .presentation(context: context)
+            .detailLine(context)
+
+        // Web-cookie provider with versionDetector: nil — must not fall back to "zoommate not detected".
+        #expect(detailLine == "web")
+    }
+
+    @Test
     func `devin presentation follows store source label`() throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-devin-presentation")
         fixture.store.lastSourceLabels[.devin] = "web"
@@ -510,8 +584,10 @@ extension ProviderSettingsDescriptorTests {
         let implementation = AlibabaTokenPlanProviderImplementation()
         let pickers = implementation.settingsPickers(context: context)
         let fields = implementation.settingsFields(context: context)
+        let regionPicker = try #require(pickers.first(where: { $0.id == "alibaba-token-plan-region" }))
 
         #expect(pickers.contains(where: { $0.id == "alibaba-token-plan-cookie-source" }))
+        #expect(Set(regionPicker.options.map(\.id)) == ["intl", "cn", "intl-personal", "cn-personal"])
         #expect(fields.contains(where: { $0.id == "alibaba-token-plan-cookie" }))
         #expect(fields.first?.actions.contains(where: { $0.id == "alibaba-token-plan-open-dashboard" }) == true)
     }
@@ -669,25 +745,16 @@ extension ProviderSettingsDescriptorTests {
     func `deepseek profile transition survives selected api token cache invalidation`() throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-deepseek-token-transition")
         fixture.settings.addTokenAccount(provider: .deepseek, label: "cv", token: "test-token")
-        let snapshot = UsageSnapshot(
+        let snapshot = try UsageSnapshot(
             primary: RateWindow(
                 usedPercent: 0,
                 windowMinutes: nil,
                 resetsAt: nil,
                 resetDescription: "$8.06 (Paid: $8.06 / Granted: $0.00)"),
             secondary: nil,
-            deepseekUsage: DeepSeekUsageSummary(
-                todayTokens: 100,
-                currentMonthTokens: 100,
-                todayCost: 0.1,
-                currentMonthCost: 0.1,
-                requestCount: 1,
-                currentMonthRequestCount: 1,
-                topModel: "deepseek-chat",
-                categoryBreakdown: [],
-                daily: [],
-                currency: "USD",
-                updatedAt: Date()),
+            details: [ProviderDetailSection(rows: [
+                ProviderDetailSection.Row(label: "Today", value: "$0.1000 · 100 tokens"),
+            ])],
             deepseekDetailedUsageState: .available,
             deepseekPlatformProfiles: [
                 DeepSeekPlatformProfile(id: "chrome:Default", name: "Chrome — Personal"),
@@ -720,7 +787,7 @@ extension ProviderSettingsDescriptorTests {
 
         fixture.store.refreshingProviders.remove(.deepseek)
         #expect(fixture.store.presentationSnapshot(for: .deepseek)?.primary != nil)
-        #expect(fixture.store.presentationSnapshot(for: .deepseek)?.deepseekUsage == nil)
+        #expect(fixture.store.presentationSnapshot(for: .deepseek)?.details.isEmpty == true)
 
         fixture.store.clearDeepSeekProfileTransition()
         #expect(fixture.store.presentationSnapshot(for: .deepseek) == nil)
@@ -821,25 +888,16 @@ extension ProviderSettingsDescriptorTests {
     @Test
     func `deepseek selected account failure preserves its balance only transition`() async throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-deepseek-transition-failure")
-        fixture.store.snapshots[.deepseek] = UsageSnapshot(
+        fixture.store.snapshots[.deepseek] = try UsageSnapshot(
             primary: RateWindow(
                 usedPercent: 0,
                 windowMinutes: nil,
                 resetsAt: nil,
                 resetDescription: "$8.06"),
             secondary: nil,
-            deepseekUsage: DeepSeekUsageSummary(
-                todayTokens: 100,
-                currentMonthTokens: 100,
-                todayCost: nil,
-                currentMonthCost: nil,
-                requestCount: 1,
-                currentMonthRequestCount: 1,
-                topModel: nil,
-                categoryBreakdown: [],
-                daily: [],
-                currency: "USD",
-                updatedAt: Date()),
+            details: [ProviderDetailSection(rows: [
+                ProviderDetailSection.Row(label: "Today", value: "100 tokens"),
+            ])],
             deepseekDetailedUsageState: .available,
             updatedAt: Date())
         fixture.store.beginDeepSeekProfileTransition()
@@ -854,7 +912,7 @@ extension ProviderSettingsDescriptorTests {
 
         #expect(fixture.store.deepseekProfileTransitionSnapshot != nil)
         #expect(fixture.store.presentationSnapshot(for: .deepseek)?.primary?.resetDescription == "$8.06")
-        #expect(fixture.store.presentationSnapshot(for: .deepseek)?.deepseekUsage == nil)
+        #expect(fixture.store.presentationSnapshot(for: .deepseek)?.details.isEmpty == true)
     }
 
     @Test

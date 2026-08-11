@@ -27,6 +27,23 @@ func spendDashboardCoverageText(covered: Int, requested: Int) -> String {
     "\(L("Coverage")): \(codexBarLocalizedInteger(covered)) / \(codexBarLocalizedInteger(requested))"
 }
 
+func codexCostCatchUpProgressText(_ activity: CodexCostCatchUpActivity) -> String {
+    if activity.totalBytes > 0 {
+        let processed = ByteCountFormatter.string(
+            fromByteCount: activity.processedBytes,
+            countStyle: .file)
+        let total = ByteCountFormatter.string(
+            fromByteCount: activity.totalBytes,
+            countStyle: .file)
+        return "\(processed) / \(total)"
+    }
+    if activity.totalFiles > 0 {
+        return "\(codexBarLocalizedInteger(activity.completedFiles)) / "
+            + codexBarLocalizedInteger(activity.totalFiles)
+    }
+    return L("Loading…")
+}
+
 enum SpendDashboardModelHistoryPresentation: Equatable {
     case unavailable
     case empty
@@ -48,12 +65,15 @@ struct SpendDashboardPane: View {
     @Bindable var settings: SettingsStore
     @Bindable var store: UsageStore
     @State private var controller: SpendDashboardController
+    @State private var isVisible = false
 
     init(settings: SettingsStore, store: UsageStore) {
         self.settings = settings
         self.store = store
         self._controller = State(initialValue: SpendDashboardController(requestBuilder: { mode in
             await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: mode)
+        }, cachedLoader: { request in
+            await SpendDashboardSource.loadCached(request)
         }))
     }
 
@@ -61,6 +81,7 @@ struct SpendDashboardPane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 self.header
+                self.codexCostCatchUpPanel
                 self.content
                 self.provenance
                 self.shareAction
@@ -69,13 +90,26 @@ struct SpendDashboardPane: View {
         }
         .background(FocusResigningBackground())
         .onAppear {
+            self.isVisible = true
             self.controller.refreshDateWindow()
             self.controller.update(configuration: self.configuration)
+            if !self.controller.isRefreshing {
+                self.synchronizeCodexCostCatchUp()
+            }
         }
         .onChange(of: self.configuration) { _, configuration in
             self.controller.update(configuration: configuration)
+            if self.isVisible, !self.controller.isRefreshing {
+                self.synchronizeCodexCostCatchUp()
+            }
+        }
+        .onChange(of: self.controller.isRefreshing) { _, isRefreshing in
+            if self.isVisible, !isRefreshing {
+                self.synchronizeCodexCostCatchUp()
+            }
         }
         .onDisappear {
+            self.isVisible = false
             self.controller.stop()
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
@@ -125,6 +159,131 @@ struct SpendDashboardPane: View {
     }
 
     @ViewBuilder
+    private var codexCostCatchUpPanel: some View {
+        if let activity = self.store.spendDashboardCodexCostCatchUpActivity,
+           activity.phase != .complete
+        {
+            SpendDashboardPanel {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Label(
+                            self.codexCostCatchUpTitle(activity),
+                            systemImage: activity.phase == .paused ? "pause.circle" : "externaldrive")
+                            .font(.headline)
+                        Spacer()
+                        Text(codexCostCatchUpProgressText(activity))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let progress = activity.fractionCompleted {
+                        ProgressView(value: progress)
+                    } else if activity.phase == .indexing {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    if let staleSnapshotUpdatedAt = activity.staleSnapshotUpdatedAt {
+                        HStack(spacing: 6) {
+                            Label(L("stale data"), systemImage: "clock.badge.exclamationmark")
+                            Text(L(
+                                "Updated relative %@",
+                                staleSnapshotUpdatedAt.relativeDescription()))
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.orange)
+                    }
+
+                    Text(self.codexCostCatchUpDetail(activity))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        if activity.pauseReason == .user
+                            || activity.pauseReason == .noProgress
+                            || self.codexCostCatchUpHasError(activity)
+                        {
+                            Button(L("Refresh")) {
+                                self.startCodexCostCatchUp(mode: .automatic)
+                            }
+                        } else if activity.mode == .automatic {
+                            Button(L("Finish now")) {
+                                self.startCodexCostCatchUp(mode: .accelerated)
+                            }
+                        } else {
+                            Button(L("Continue in background")) {
+                                self.startCodexCostCatchUp(mode: .automatic)
+                            }
+                        }
+
+                        if activity.pauseReason != .user,
+                           activity.pauseReason != .noProgress,
+                           !self.codexCostCatchUpHasError(activity)
+                        {
+                            Button(L("Cancel")) {
+                                self.store.stopSpendDashboardCodexCostCatchUp()
+                            }
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private func codexCostCatchUpHasError(_ activity: CodexCostCatchUpActivity) -> Bool {
+        if case .error = activity.pauseReason {
+            return true
+        }
+        return false
+    }
+
+    private func synchronizeCodexCostCatchUp() {
+        self.store.synchronizeSpendDashboardCodexCostCatchUp(
+            accounts: self.codexSpendScanRequests)
+    }
+
+    private func startCodexCostCatchUp(mode: CodexCostCatchUpMode) {
+        self.store.startSpendDashboardCodexCostCatchUpIfNeeded(
+            accounts: self.codexSpendScanRequests,
+            mode: mode)
+    }
+
+    private var codexSpendScanRequests: [CodexSpendScanRequest] {
+        guard self.configuration.costUsageEnabled,
+              self.configuration.providerIDs.contains(UsageProvider.codex.rawValue)
+        else { return [] }
+        return SpendDashboardSource.codexRequests(settings: self.settings, store: self.store)
+    }
+
+    private func codexCostCatchUpTitle(_ activity: CodexCostCatchUpActivity) -> String {
+        let prefix = L("Local estimated history")
+        switch activity.phase {
+        case .indexing:
+            return "\(prefix) · \(L("Refreshing"))"
+        case .paused:
+            return "\(prefix) · \(L("Inactive"))"
+        case .complete:
+            return "\(prefix) · \(L("Done"))"
+        }
+    }
+
+    private func codexCostCatchUpDetail(_ activity: CodexCostCatchUpActivity) -> String {
+        switch activity.pauseReason {
+        case .lowPower:
+            L("Battery Saver")
+        case .thermal, .user:
+            L("Inactive")
+        case .noProgress:
+            L("Error")
+        case let .error(message):
+            L("cost_status_error", L("Cost"), message)
+        case nil:
+            L("Estimated from local Codex logs for the selected account.")
+        }
+    }
+
+    @ViewBuilder
     private var content: some View {
         if !self.settings.costUsageEnabled {
             SpendDashboardPanel {
@@ -136,17 +295,24 @@ struct SpendDashboardPane: View {
                 .frame(maxWidth: .infinity, minHeight: 220)
             }
         } else if self.controller.model.groups.isEmpty {
+            let emptyState = SpendDashboardEmptyState.make(isRefreshing: self.controller.isRefreshing)
             SpendDashboardPanel {
                 ContentUnavailableView {
-                    Label(L("No local cost history yet"), systemImage: "chart.bar.xaxis")
+                    Label(emptyState.title, systemImage: "chart.bar.xaxis")
                 } description: {
-                    Text(L("Turn on cost tracking or refresh after using a supported provider."))
+                    Text(emptyState.message)
                 }
                 .frame(maxWidth: .infinity, minHeight: 220)
             }
         } else {
             ForEach(self.controller.model.groups) { group in
                 SpendCurrencySection(group: group, requestedDays: self.controller.model.requestedDays)
+            }
+        }
+
+        if self.settings.costUsageEnabled, !self.controller.model.tokenActivity.isEmpty {
+            SpendDashboardPanel {
+                SpendActivityHeatmapView(points: self.controller.model.tokenActivity)
             }
         }
 
@@ -209,7 +375,7 @@ struct SpendDashboardPane: View {
                         codexRowCount == 1 ? self.store.snapshot(for: .codex) : nil,
                     ]
                 } else {
-                    [self.store.snapshot(for: row.provider)]
+                    [self.store.snapshot(for: row.provider.instanceID)]
                 }
                 if let name = ShareStatsSubscriptionName.first(from: snapshots, provider: row.provider) {
                     names[row.id] = name
@@ -223,6 +389,22 @@ struct SpendDashboardPane: View {
         Binding(
             get: { self.controller.selectedDays },
             set: { self.controller.selectDays($0) })
+    }
+}
+
+struct SpendDashboardEmptyState: Equatable {
+    let title: String
+    let message: String
+
+    static func make(isRefreshing: Bool) -> Self {
+        if isRefreshing {
+            return Self(
+                title: L("Refreshing"),
+                message: L("Local estimated cost history across supported providers."))
+        }
+        return Self(
+            title: L("No local cost history yet"),
+            message: L("Turn on cost tracking or refresh after using a supported provider."))
     }
 }
 

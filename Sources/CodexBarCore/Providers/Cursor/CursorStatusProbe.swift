@@ -660,7 +660,8 @@ public struct CursorStatusSnapshot: Sendable {
             usedPercent: primaryUsedPercent,
             windowMinutes: billingCycleWindowMinutes,
             resetsAt: self.billingCycleEnd,
-            resetDescription: self.billingCycleEnd.map { Self.formatResetDate($0) })
+            resetDescription: cursorRequests.map { "\($0.used) / \($0.limit) requests" }
+                ?? self.billingCycleEnd.map { Self.formatResetDate($0) })
 
         // Secondary: Auto + Composer usage (shown as its own bar below Total).
         // Legacy request-based plans don't have the token-based Auto/API breakdown — those percentages
@@ -732,7 +733,11 @@ public struct CursorStatusSnapshot: Sendable {
             secondary: secondary,
             tertiary: tertiary,
             providerCost: providerCost,
-            cursorRequests: cursorRequests,
+            details: cursorRequests.map { requests in
+                [.makeSection(title: "Usage", rows: [
+                    .makeRow(label: "Request quota", value: "\(requests.used) / \(requests.limit)"),
+                ])]
+            } ?? [],
             updatedAt: Date(),
             identity: identity)
     }
@@ -753,18 +758,29 @@ public struct CursorStatusSnapshot: Sendable {
     }
 
     private static func formatMembershipType(_ type: String) -> String {
-        switch type.lowercased() {
+        let planName = switch type.lowercased() {
         case "enterprise":
-            "Cursor Enterprise"
-        case "pro":
-            "Cursor Pro"
+            "Enterprise"
+        case "express":
+            "Start"
+        case "free":
+            "Free"
+        case "free_trial":
+            "Pro Trial"
         case "hobby":
-            "Cursor Hobby"
+            "Hobby"
+        case "pro", "pro_student":
+            "Pro"
+        case "pro_plus":
+            "Pro+"
         case "team":
-            "Cursor Team"
+            "Team"
+        case "ultra":
+            "Ultra"
         default:
-            "Cursor \(type.capitalized)"
+            type
         }
+        return "Cursor \(planName)"
     }
 }
 
@@ -861,6 +877,8 @@ public actor CursorSessionStore {
     private func loadFromDiskIfNeeded() {
         guard !self.hasLoadedFromDisk else { return }
         self.hasLoadedFromDisk = true
+        // Remediate a session file created 0644 by an earlier build before reading it.
+        CredentialFileWriter.repairPermissions(at: self.fileURL)
         self.loadFromDisk()
     }
 
@@ -894,7 +912,10 @@ public actor CursorSessionStore {
         else {
             return
         }
-        try? data.write(to: self.fileURL)
+        // These are Cursor auth session cookies. Write them owner-only (0600) with the permission
+        // established before any bytes land, matching the codex/kimi/antigravity credential stores;
+        // a plain Data.write leaves them world-readable (0644).
+        try? CredentialFileWriter.writePrivate(data, to: self.fileURL)
     }
 
     private func loadFromDisk() {
@@ -961,6 +982,7 @@ public struct CursorStatusProbe: Sendable {
     let browserCookieImportOrder: BrowserCookieImportOrder
     private let urlSession: any ProviderHTTPTransport
     let appAuthStore: any CursorAppAuthSessionProviding
+    let conditionalMutationCoordinator: CookieHeaderCache.ConditionalMutationCoordinator
 
     public init(
         baseURL: URL = URL(string: "https://cursor.com")!,
@@ -974,7 +996,25 @@ public struct CursorStatusProbe: Sendable {
             browserDetection: browserDetection,
             browserCookieImportOrder: Self.defaultBrowserCookieImportOrder,
             urlSession: urlSession,
-            appAuthStore: CursorAppAuthStore())
+            appAuthStore: CursorAppAuthStore(),
+            conditionalMutationCoordinator: .shared)
+    }
+
+    package init(
+        baseURL: URL = URL(string: "https://cursor.com")!,
+        timeout: TimeInterval = 15.0,
+        browserDetection: BrowserDetection,
+        urlSession: any ProviderHTTPTransport = ProviderHTTPClient.shared,
+        conditionalMutationCoordinator: CookieHeaderCache.ConditionalMutationCoordinator)
+    {
+        self.init(
+            baseURL: baseURL,
+            timeout: timeout,
+            browserDetection: browserDetection,
+            browserCookieImportOrder: Self.defaultBrowserCookieImportOrder,
+            urlSession: urlSession,
+            appAuthStore: CursorAppAuthStore(),
+            conditionalMutationCoordinator: conditionalMutationCoordinator)
     }
 
     init(
@@ -983,7 +1023,8 @@ public struct CursorStatusProbe: Sendable {
         browserDetection: BrowserDetection,
         browserCookieImportOrder: BrowserCookieImportOrder = Self.defaultBrowserCookieImportOrder,
         urlSession: any ProviderHTTPTransport = ProviderHTTPClient.shared,
-        appAuthStore: any CursorAppAuthSessionProviding)
+        appAuthStore: any CursorAppAuthSessionProviding,
+        conditionalMutationCoordinator: CookieHeaderCache.ConditionalMutationCoordinator = .shared)
     {
         self.baseURL = baseURL
         self.timeout = timeout
@@ -991,6 +1032,7 @@ public struct CursorStatusProbe: Sendable {
         self.browserCookieImportOrder = browserCookieImportOrder
         self.urlSession = urlSession
         self.appAuthStore = appAuthStore
+        self.conditionalMutationCoordinator = conditionalMutationCoordinator
     }
 
     /// Fetch Cursor usage using a first-party web session derived from Cursor.app's access token.

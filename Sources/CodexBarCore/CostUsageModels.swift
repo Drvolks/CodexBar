@@ -1,5 +1,21 @@
 import Foundation
 
+package struct CostUsageTokenActivityCache: Sendable, Equatable {
+    package let daily: [CostUsageDailyReport.Entry]
+    package let coverageSinceKey: String
+    package let coverageUntilKey: String
+
+    package init(
+        daily: [CostUsageDailyReport.Entry],
+        coverageSinceKey: String,
+        coverageUntilKey: String)
+    {
+        self.daily = daily
+        self.coverageSinceKey = coverageSinceKey
+        self.coverageUntilKey = coverageUntilKey
+    }
+}
+
 public struct CostUsageWindowSummary: Sendable, Equatable {
     public let days: Int
     public let totalTokens: Int?
@@ -1064,7 +1080,14 @@ enum CostUsageBucketInterval {
 }
 
 enum CostUsageLocalDay {
+    static func gregorianCalendar(matching calendar: Calendar = .current) -> Calendar {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        return gregorian
+    }
+
     static func key(from date: Date, calendar: Calendar = .current) -> String {
+        let calendar = Self.gregorianCalendar(matching: calendar)
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         let year = components.year ?? 0
         let month = components.month ?? 0

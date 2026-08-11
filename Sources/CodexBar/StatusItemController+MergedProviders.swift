@@ -4,12 +4,12 @@ import CodexBarCore
 extension StatusItemController {
     var shouldMergeIcons: Bool {
         guard self.settings.mergeIcons else { return false }
-        return self.store.enabledProvidersForDisplay().count > 1
+        return self.store.enabledFirstPartyProvidersForDisplay().count > 1
     }
 
     func mergedStatusItemProvidersForDisplay() -> [UsageProvider] {
         guard self.settings.mergeIcons else { return [] }
-        let enabledProviders = self.store.enabledProvidersForDisplay()
+        let enabledProviders = self.store.enabledFirstPartyProvidersForDisplay()
         guard enabledProviders.count > 1 else { return [] }
         return enabledProviders
     }

@@ -66,7 +66,8 @@ struct CLICardsClaudeSwapTests {
     @Test
     func `configured executable path strips surrounding quotes`() {
         for rawPath in ["  \"/tmp/cswap\"  ", "  '/tmp/cswap'  "] {
-            let config = ProviderConfig(id: .claude, claudeSwapExecutablePath: rawPath)
+            var config = ProviderConfig(id: .claude)
+            config.claudeSwapExecutablePath = rawPath
             #expect(CLIClaudeSwapCards.executablePath(from: config) == "/tmp/cswap")
         }
         #expect(CLIClaudeSwapCards.executablePath(from: nil).isEmpty)
@@ -78,7 +79,8 @@ struct CLICardsClaudeSwapTests {
         let legacy = try JSONDecoder().decode(ProviderConfig.self, from: legacyData)
         #expect(legacy.claudeSwapShowSingleAccount != true)
 
-        let enabled = ProviderConfig(id: .claude, claudeSwapShowSingleAccount: true)
+        var enabled = ProviderConfig(id: .claude)
+        enabled.claudeSwapShowSingleAccount = true
         let encoded = try JSONEncoder().encode(enabled)
         let decoded = try JSONDecoder().decode(ProviderConfig.self, from: encoded)
         #expect(decoded.claudeSwapShowSingleAccount == true)
@@ -241,6 +243,7 @@ struct CLICardsClaudeSwapTests {
         let statuses: [ClaudeSwapUsageStatus] = [
             .apiKey,
             .tokenExpired,
+            .reloginRequired,
             .keychainUnavailable,
             .noCredentials,
             .unavailable,
@@ -265,6 +268,7 @@ struct CLICardsClaudeSwapTests {
         #expect(output.cards.map(\.accountProblem) == [
             "API-key account; subscription usage is unavailable.",
             "Token expired. Switch to this account in claude-swap to refresh it.",
+            "Re-login required. Re-authenticate this account in claude-swap.",
             "claude-swap could not read the active account's Keychain entry.",
             "No stored credentials for this account slot.",
             "Usage fetch failed.",
@@ -371,8 +375,7 @@ struct CLICardsClaudeSwapTests {
         ]}
         JSON
         """
-        try script.write(to: executable, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        try FakeExecutable.install(script, at: executable)
 
         let output = await CLIClaudeSwapCards.fetch(
             eligible: true,

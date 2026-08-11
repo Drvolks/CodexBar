@@ -1,5 +1,28 @@
 /* Russian localization for CodexBar */
 
+/* iCloud Sync */
+"iCloud Sync" = "iCloud Sync";
+"Sync settings and providers across your Macs via iCloud" = "Sync settings and providers across your Macs via iCloud";
+"Include API keys, cookies, and tokens" = "Include API keys, cookies, and tokens";
+"Sync usage snapshots" = "Sync usage snapshots";
+"Show accounts from other Macs" = "Show accounts from other Macs";
+"Requires a signed release build of CodexBar." = "Requires a signed release build of CodexBar.";
+"Sign in to iCloud in System Settings to enable sync." = "Sign in to iCloud in System Settings to enable sync.";
+"iCloud access is restricted on this Mac." = "iCloud access is restricted on this Mac.";
+"Sync is paused: another Mac uses a newer version of CodexBar. Update to resume." = "Sync is paused: another Mac uses a newer version of CodexBar. Update to resume.";
+"Last successful fetch" = "Last successful fetch";
+"Last successful push" = "Last successful push";
+"Never" = "Never";
+"Macs" = "Macs";
+"No synced Macs yet." = "No synced Macs yet.";
+"Secrets use iCloud end-to-end encryption via encryptedValues. Hooks and machine-local paths never sync." = "Secrets use iCloud end-to-end encryption via encryptedValues. Hooks and machine-local paths never sync.";
+"Last seen %@" = "Last seen %@";
+"This Mac" = "This Mac";
+"another Mac" = "another Mac";
+"%dm ago" = "%dm ago";
+"%dh ago" = "%dh ago";
+"%dd ago" = "%dd ago";
+
 "tab_hooks" = "Хуки";
 "hooks_enable_title" = "Включить хуки";
 "hooks_enable_subtitle" = "Запускать внешние команды при событиях квоты или провайдера.";
@@ -21,7 +44,7 @@
 "hooks_delete_argument" = "Удалить аргумент";
 
 "ollama_safari_cookie_access_hint" = "Для файлов cookie Safari приложению CodexBar нужен полный доступ к диску (Системные настройки > Конфиденциальность и безопасность).";
-"ollama_browser_cookie_decryption_denied" = "Расшифровка файлов cookie %@ была отклонена в Связке ключей; повторите попытку с помощью ручного обновления.";
+"ollama_browser_cookie_decryption_denied" = "Расшифровка файлов cookie %@ была отклонена в Связке ключей. Откройте карточку провайдера и нажмите «Обновить» (⌘R), чтобы снова запросить доступ к Связке ключей.";
 "ollama_browser_cookie_decryption_disabled" = "Расшифровка файлов cookie %@ отключена в CodexBar; включите доступ к Связке ключей и обновите.";
 
 " providers" = " провайдеров";
@@ -431,6 +454,9 @@
 "section_agent_sessions" = "Сеансы агентов";
 "language_title" = "Язык";
 "language_subtitle" = "Изменяет язык интерфейса. Для полного применения нужен перезапуск приложения.";
+"currency_title" = "Предпочитаемая валюта";
+"currency_subtitle" = "Валюта для оценки затрат и расходов. Используются курсы, обновляемые ежедневно.";
+"currency_auto" = "Автоматически (валюта провайдера / USD)";
 "language_system" = "Системный";
 "language_english" = "English";
 "language_spanish" = "Español";
@@ -585,7 +611,7 @@
 "show_provider_changelog_links_title" = "Показывать ссылки на журналы изменений провайдеров";
 "show_provider_changelog_links_subtitle" = "Добавляет в меню ссылки на заметки к релизам для поддерживаемых CLI-провайдеров.";
 "show_credits_extra_usage_title" = "Показывать кредиты и доп. использование";
-"show_credits_extra_usage_subtitle" = "Показывать в меню разделы кредитов Codex и дополнительного использования Claude.";
+"show_credits_extra_usage_subtitle" = "Показывать кредиты и дополнительное использование для поддерживаемых провайдеров.";
 "multi_account_layout_title" = "Макет нескольких аккаунтов";
 "multi_account_layout_subtitle" = "Выберите сегментированное переключение аккаунтов или сгруппированные карты аккаунтов.";
 "multi_account_layout_segmented" = "Сегментированный";
@@ -641,6 +667,8 @@
 "copyright" = "© 2026 Peter Steinberger. Лицензия MIT.";
 
 /* Debug Pane */
+"use_javascriptcore_plugin_engine" = "Использовать JavaScriptCore для плагинов провайдеров";
+"use_javascriptcore_plugin_engine_subtitle" = "Только для отката совместимости. Перезапустите CodexBar; CODEXBAR_PLUGIN_ENGINE переопределяет эту настройку.";
 "section_logging" = "Журналирование";
 "enable_file_logging" = "Включить запись логов";
 "enable_file_logging_subtitle" = "Записывать логи в %@ для отладки.";
@@ -814,7 +842,7 @@
 "Pace: %@ · %@" = "Темп: %@ · %@";
 "1.5× headroom" = "Запас 1,5×";
 "%@ · %@" = "%@ · %@";
-"≈ %d%% run-out risk" = "≈ %d%% риск исчерпания";
+"(%d%% risk)" = "(%d%% риск исчерпания)";
 "%d%% in deficit" = "%d%% в дефиците";
 "%d%% in reserve" = "%d%% в резерве";
 "usage_percent_suffix_left" = "осталось";
@@ -1222,6 +1250,8 @@
 "section_links" = "Ссылки";
 "Show Codex Spark usage" = "Показывать использование Codex Spark";
 "Shows Codex Spark quota rows in the menu and provider preview. Requires optional credits and extra usage in Display settings." = "Показывает строки квот Codex Spark в меню и предварительном просмотре провайдера. Требует включить «Показывать кредиты и доп. использование» в настройках «Отображение».";
+"Show Daily Routines usage" = "Показывать использование ежедневных задач";
+"Shows the Daily Routines quota row in the menu and provider preview. Requires optional credits and extra usage in Display settings." = "Показывает строку квоты ежедневных задач в меню и предварительном просмотре провайдера. Требует включить «Показывать кредиты и доп. использование» в настройках «Отображение».";
 "Scroll to see more models" = "Прокрутите, чтобы увидеть больше моделей";
 "Copy Image" = "Копировать изображение";
 "Copy Stats" = "Копировать статистику";
@@ -1274,6 +1304,9 @@
 "Weekly cannot run out before reset at this pace" = "При таком темпе недельный лимит не может закончиться до сброса";
 "Weekly can run out ≈%d windows early" = "Недельный лимит может закончиться на ≈%d окон раньше";
 "Estimated: %@" = "Оценка: %@";
+"session_quota_estimate_value_format" = "%1$@ %2$@";
+"session quota" = "лимит сессии";
+"session quotas" = "лимиты сессий";
 "Coding Plan" = "План программирования";
 "Agent Plan" = "План агента";
 "Team" = "Команда";
@@ -1317,7 +1350,11 @@
 "menu_bar_layout_token_account" = "Аккаунт";
 "menu_bar_layout_token_session" = "Сеанс %";
 "menu_bar_layout_token_weekly" = "Недельный %";
+"menu_bar_layout_token_scoped_weekly" = "Недельный по области %";
 "menu_bar_layout_token_auto" = "Авто %";
+"menu_bar_layout_token_session_pace" = "Темп сеанса";
+"menu_bar_layout_token_weekly_pace" = "Недельный темп";
+"menu_bar_layout_token_auto_pace" = "Авто темп";
 "menu_bar_layout_token_bar" = "Индикатор использования";
 "menu_bar_layout_token_resets_in" = "Сброс через";
 "menu_bar_layout_token_reset_at" = "Сброс в";
@@ -1343,3 +1380,56 @@
 "Cost today unavailable" = "Расход сегодня: Недоступно";
 "30-day cost unavailable" = "Расход за 30 дней: Недоступно";
 "Resets" = "Сбросы";
+"Finish now" = "Завершить сейчас";
+"Continue in background" = "Продолжить в фоновом режиме";
+
+"Cumulative" = "Накопительно";
+"Token activity" = "Активность токенов";
+"View" = "Вид";
+"in the last year" = "за последний год";
+"No activity in the last 12 months" = "Нет активности за последние 12 месяцев";
+"Each column = 1 week" = "Каждый столбец = 1 неделя";
+"Running total" = "Накопленный итог";
+"Less" = "Меньше";
+"More" = "Больше";
+
+/* Provider Plugins */
+"Install…" = "Установить…";
+"Install plugin" = "Установить плагин";
+"Copies a JavaScript or TypeScript file into the plugins directory." = "Копирует файл JavaScript или TypeScript в каталог плагинов.";
+"Show in Finder" = "Показать в Finder";
+"Plugins directory" = "Каталог плагинов";
+"Provider Plugins" = "Плагины провайдеров";
+"Plugins are local JavaScript or TypeScript files. Network and cookie access require approval." = "Плагины — это локальные файлы JavaScript или TypeScript. Для доступа к сети и cookie требуется одобрение.";
+"No Plugins Installed" = "Плагины не установлены";
+"Drop a .js or .ts file into the plugins directory, or choose Install…" = "Перетащите файл .js или .ts в каталог плагинов либо выберите «Установить…»";
+"Delete Plugin?" = "Удалить плагин?";
+"Delete" = "Удалить";
+"This removes the plugin file, transpile cache, approval, saved settings and secrets, and history." = "При этом будут удалены файл плагина, кэш транспиляции, одобрение, сохранённые настройки и секреты, а также история.";
+"Plugin Error" = "Ошибка плагина";
+"Needs approval" = "Требуется одобрение";
+"File" = "Файл";
+"Origins" = "Источники";
+"Configure endpoint settings" = "Настроить параметры эндпоинта";
+"Capabilities" = "Разрешения";
+"Network" = "Сеть";
+"Cookie domains" = "Домены cookie";
+"Approve…" = "Одобрить…";
+"Delete…" = "Удалить…";
+"Unknown validation error" = "Неизвестная ошибка проверки";
+"Approve Plugin" = "Одобрить плагин";
+"Install and Approve Plugin" = "Установить и одобрить плагин";
+"Network authority" = "Область сетевого доступа";
+"Auth: %@" = "Авторизация: %@";
+"Capabilities: %@" = "Разрешения: %@";
+"network" = "сеть";
+"Secrets: %@" = "Секреты: %@";
+"none" = "нет";
+"Cookie domains: %@" = "Домены cookie: %@";
+"Type %@ to confirm" = "Введите %@ для подтверждения";
+"Enter every endpoint setting to review the exact network origins." = "Укажите все параметры эндпоинта, чтобы просмотреть точные сетевые источники.";
+"Approve" = "Одобрить";
+"Install" = "Установить";
+"5-hour usage" = "Использование за 5 часов";
+"7-day usage" = "Использование за 7 дней";
+"Total usage" = "Общее использование";

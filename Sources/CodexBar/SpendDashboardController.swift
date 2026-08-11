@@ -5,6 +5,7 @@ import Observation
 
 struct SpendDashboardConfiguration: Equatable, Sendable {
     let costUsageEnabled: Bool
+    let preferredCurrencyCode: String
     let providerIDs: [String]
     let codexAccountIdentities: [String]
     let codexAccountDisplayNames: [String: String]
@@ -13,6 +14,7 @@ struct SpendDashboardConfiguration: Equatable, Sendable {
 
     init(
         costUsageEnabled: Bool,
+        preferredCurrencyCode: String = "auto",
         providerIDs: [String],
         codexAccountIdentities: [String],
         codexAccountDisplayNames: [String: String] = [:],
@@ -20,6 +22,7 @@ struct SpendDashboardConfiguration: Equatable, Sendable {
         sourceRevisions: [String] = [])
     {
         self.costUsageEnabled = costUsageEnabled
+        self.preferredCurrencyCode = preferredCurrencyCode
         self.providerIDs = providerIDs
         self.codexAccountIdentities = codexAccountIdentities
         self.codexAccountDisplayNames = codexAccountDisplayNames
@@ -117,8 +120,14 @@ struct CodexSpendSnapshotLoadContext: Sendable {
 enum SpendDashboardSource {
     typealias CodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot
+    typealias CodexActivityLoader = @Sendable (CodexSpendSnapshotLoadContext) async
+        -> CostUsageTokenActivityCache?
+    typealias CachedCodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async
+        -> CostUsageTokenSnapshot?
+    typealias CodexCacheRootResolver = @Sendable (CodexSpendScanRequest) -> URL
 
     static let scanDays = 30
+    static let activityDays = 365
 
     @MainActor
     static func configuration(settings: SettingsStore, store: UsageStore) -> SpendDashboardConfiguration {
@@ -142,6 +151,7 @@ enum SpendDashboardSource {
     {
         SpendDashboardConfiguration(
             costUsageEnabled: settings.costUsageEnabled,
+            preferredCurrencyCode: settings.preferredCurrencyCode,
             providerIDs: providers.map(\.rawValue),
             codexAccountIdentities: codexRequests.map { "\($0.id)|\($0.cacheIdentity)" },
             codexAccountDisplayNames: self.codexDisplayNamesByID(codexRequests),
@@ -246,14 +256,117 @@ enum SpendDashboardSource {
     }
 
     static func load(_ request: SpendDashboardLoadRequest) async -> SpendDashboardLoadResult {
-        await self.load(request, codexSnapshotLoader: { context in
-            try await self.loadCodexSnapshot(context)
-        })
+        await self.load(
+            request,
+            cacheRootResolver: { self.codexCacheRoot(for: $0) },
+            codexSnapshotLoader: { context in try await self.loadCodexSnapshot(context) },
+            codexActivityLoader: { context in await self.loadCodexActivity(context) })
+    }
+
+    static func load(
+        _ request: SpendDashboardLoadRequest,
+        cacheRootResolver: @escaping CodexCacheRootResolver,
+        codexSnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+    {
+        await self.load(
+            request,
+            cacheRootResolver: cacheRootResolver,
+            codexSnapshotLoader: codexSnapshotLoader,
+            codexActivityLoader: { context in await self.loadCodexActivity(context) })
+    }
+
+    static func loadCached(_ request: SpendDashboardLoadRequest) async -> SpendDashboardLoadResult {
+        await self.loadCached(request, cacheRootResolver: { self.codexCacheRoot(for: $0) })
+    }
+
+    static func loadCached(
+        _ request: SpendDashboardLoadRequest,
+        cacheRootResolver: @escaping CodexCacheRootResolver) async -> SpendDashboardLoadResult
+    {
+        await self.loadCached(
+            request,
+            cacheRootResolver: cacheRootResolver,
+            cachedCodexSnapshotLoader: { context in
+                await CostUsageFetcher(cacheRoot: context.cacheRoot)
+                    .loadCachedCodexTokenSnapshotForScopedHome(
+                        now: context.now,
+                        codexHomePath: context.account.homePath,
+                        historyDays: context.historyDays,
+                        includePiSessions: false,
+                        includeProjectAndSessionBreakdowns: false)
+            })
+    }
+
+    static func loadCached(
+        _ request: SpendDashboardLoadRequest,
+        cachedCodexSnapshotLoader: CachedCodexSnapshotLoader) async -> SpendDashboardLoadResult
+    {
+        await self.loadCached(
+            request,
+            cacheRootResolver: { self.codexCacheRoot(for: $0) },
+            cachedCodexSnapshotLoader: cachedCodexSnapshotLoader)
+    }
+
+    private static func loadCached(
+        _ request: SpendDashboardLoadRequest,
+        cacheRootResolver: CodexCacheRootResolver,
+        cachedCodexSnapshotLoader: CachedCodexSnapshotLoader) async -> SpendDashboardLoadResult
+    {
+        var inputs = request.capturedInputs
+        for account in request.codexRequests {
+            guard !Task.isCancelled,
+                  self.currentAuthFingerprint(for: account) == account.authFingerprint
+            else { continue }
+            let snapshot = await cachedCodexSnapshotLoader(CodexSpendSnapshotLoadContext(
+                account: account,
+                cacheRoot: cacheRootResolver(account),
+                now: request.now,
+                force: false,
+                historyDays: Self.scanDays,
+                refreshPricingInBackground: false,
+                includePiSessions: false))
+            guard !Task.isCancelled,
+                  let snapshot,
+                  self.currentAuthFingerprint(for: account) == account.authFingerprint
+            else { continue }
+            inputs.append(SpendDashboardModel.ProviderInput(
+                id: "codex:\(account.id)",
+                provider: .codex,
+                displayName: account.displayName,
+                modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata.displayName,
+                snapshot: snapshot))
+        }
+        return SpendDashboardLoadResult(inputs: inputs, failedSourceIDs: request.unavailableSourceIDs)
     }
 
     static func load(
         _ request: SpendDashboardLoadRequest,
         codexSnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+    {
+        await self.load(
+            request,
+            cacheRootResolver: { self.codexCacheRoot(for: $0) },
+            codexSnapshotLoader: codexSnapshotLoader,
+            codexActivityLoader: { _ in nil })
+    }
+
+    static func load(
+        _ request: SpendDashboardLoadRequest,
+        codexSnapshotLoader: CodexSnapshotLoader,
+        codexActivityLoader: CodexActivityLoader) async -> SpendDashboardLoadResult
+    {
+        await self.load(
+            request,
+            cacheRootResolver: { self.codexCacheRoot(for: $0) },
+            codexSnapshotLoader: codexSnapshotLoader,
+            codexActivityLoader: codexActivityLoader)
+    }
+
+    private static func load(
+        _ request: SpendDashboardLoadRequest,
+        cacheRootResolver: CodexCacheRootResolver,
+        codexSnapshotLoader: CodexSnapshotLoader,
+        codexActivityLoader: CodexActivityLoader) async -> SpendDashboardLoadResult
     {
         var inputs = request.capturedInputs
         var failedSourceIDs = request.unavailableSourceIDs
@@ -261,14 +374,12 @@ enum SpendDashboardSource {
         for account in request.codexRequests {
             let sourceID = "codex:\(account.id)"
             do {
-                guard self.currentAuthFingerprint(for: account) == account.authFingerprint else {
+                guard self.codexAuthFingerprintMatches(account) else {
                     failedSourceIDs.insert(sourceID)
                     invalidatedSourceIDs.insert(sourceID)
                     continue
                 }
-                let cacheRoot = UsageStore.costUsageCacheDirectory()
-                    .appendingPathComponent("accounts", isDirectory: true)
-                    .appendingPathComponent(account.cacheIdentity, isDirectory: true)
+                let cacheRoot = cacheRootResolver(account)
                 let snapshot = try await codexSnapshotLoader(CodexSpendSnapshotLoadContext(
                     account: account,
                     cacheRoot: cacheRoot,
@@ -278,7 +389,16 @@ enum SpendDashboardSource {
                     refreshPricingInBackground: false,
                     includePiSessions: false))
                 try Task.checkCancellation()
-                guard self.currentAuthFingerprint(for: account) == account.authFingerprint else {
+                let tokenActivityCache = await codexActivityLoader(CodexSpendSnapshotLoadContext(
+                    account: account,
+                    cacheRoot: cacheRoot,
+                    now: request.now,
+                    force: false,
+                    historyDays: Self.activityDays,
+                    refreshPricingInBackground: false,
+                    includePiSessions: false))
+                try Task.checkCancellation()
+                guard self.codexAuthFingerprintMatches(account) else {
                     failedSourceIDs.insert(sourceID)
                     invalidatedSourceIDs.insert(sourceID)
                     continue
@@ -288,7 +408,8 @@ enum SpendDashboardSource {
                     provider: .codex,
                     displayName: account.displayName,
                     modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata.displayName,
-                    snapshot: snapshot))
+                    snapshot: snapshot,
+                    tokenActivityCache: tokenActivityCache))
             } catch is CancellationError {
                 failedSourceIDs.formUnion(request.codexRequests.map { "codex:\($0.id)" })
                 return SpendDashboardLoadResult(
@@ -300,7 +421,7 @@ enum SpendDashboardSource {
             }
         }
         let lateInvalidatedSourceIDs = Set(request.codexRequests.compactMap { account in
-            self.currentAuthFingerprint(for: account) == account.authFingerprint
+            self.codexAuthFingerprintMatches(account)
                 ? nil
                 : "codex:\(account.id)"
         })
@@ -327,9 +448,18 @@ enum SpendDashboardSource {
             includePiSessions: context.includePiSessions)
     }
 
+    private static func loadCodexActivity(
+        _ context: CodexSpendSnapshotLoadContext) async -> CostUsageTokenActivityCache?
+    {
+        await CostUsageFetcher(cacheRoot: context.cacheRoot).loadCachedCodexTokenActivity(
+            now: context.now,
+            codexHomePath: context.account.homePath,
+            maximumDays: context.historyDays)
+    }
+
     @MainActor
     static func costCapableProviders(store: UsageStore) -> [UsageProvider] {
-        store.enabledProvidersForDisplay().filter {
+        store.enabledFirstPartyProvidersForDisplay().filter {
             ProviderDescriptorRegistry.descriptor(for: $0).tokenCost.supportsTokenCost
         }
     }
@@ -362,7 +492,11 @@ enum SpendDashboardSource {
         settings: SettingsStore,
         store: UsageStore) -> [String]
     {
-        ["settings:\(settings.configRevision)"] + providers.compactMap { provider in
+        var revisions = ["settings:\(settings.configRevision)"]
+        if providers.contains(.codex) {
+            revisions.append("codex-dashboard:\(store.spendDashboardCodexCostCatchUpRevision)")
+        }
+        revisions += providers.compactMap { provider in
             guard provider != .codex else { return nil }
             let current = store.tokenSnapshotPublicationForCurrentProviderConfig(for: provider)
             guard let current else { return "\(provider.rawValue):unavailable" }
@@ -371,6 +505,7 @@ enum SpendDashboardSource {
             }
             return "\(provider.rawValue):snapshot:\(current.publicationRevision):\(self.snapshotRevision(snapshot))"
         }
+        return revisions
     }
 
     private static func snapshotRevision(_ snapshot: CostUsageTokenSnapshot) -> String {
@@ -414,7 +549,7 @@ enum SpendDashboardSource {
     {
         providers.compactMap { provider in
             guard provider != .codex else { return nil }
-            var config = settings.providerConfig(for: provider) ?? ProviderConfig(id: provider)
+            var config = settings.providerConfig(for: provider) ?? ProviderConfig(id: provider.instanceID)
             config.enabled = nil
             config.quotaWarnings = nil
             // The dashboard follows the effective account, not the whole saved-account collection.
@@ -490,6 +625,20 @@ enum SpendDashboardSource {
         SHA256.hash(data: value).map { String(format: "%02x", $0) }.joined()
     }
 
+    static func codexCacheRoot(for request: CodexSpendScanRequest) -> URL {
+        let costUsageDirectory = UsageStore.costUsageCacheDirectory()
+        if request.source == .liveSystem {
+            return costUsageDirectory.deletingLastPathComponent()
+        }
+        return costUsageDirectory
+            .appendingPathComponent("accounts", isDirectory: true)
+            .appendingPathComponent(request.cacheIdentity, isDirectory: true)
+    }
+
+    static func codexAuthFingerprintMatches(_ request: CodexSpendScanRequest) -> Bool {
+        self.currentAuthFingerprint(for: request) == request.authFingerprint
+    }
+
     private static func currentAuthFingerprint(for request: CodexSpendScanRequest) -> String? {
         let current = CodexAuthFingerprint.fingerprint(homePath: request.homePath)
         return request.authFileWasReadable ? current : current ?? request.authFingerprint
@@ -560,6 +709,7 @@ final class SpendDashboardController {
     typealias RequestBuilder = @MainActor @Sendable (SpendDashboardRequestBuildMode) async
         -> SpendDashboardLoadRequest
     typealias Loader = @Sendable (SpendDashboardLoadRequest) async -> SpendDashboardLoadResult
+    typealias CachedLoader = @Sendable (SpendDashboardLoadRequest) async -> SpendDashboardLoadResult
 
     private enum ReconciliationObservation: Sendable {
         case confirmedEmpty
@@ -657,6 +807,7 @@ final class SpendDashboardController {
     private static let daysDefaultsKey = "settingsSpendDashboardDays"
     private let userDefaults: UserDefaults
     private let requestBuilder: RequestBuilder
+    private let cachedLoader: CachedLoader?
     private let loader: Loader
     private let nowProvider: @Sendable () -> Date
     private var loadTask: Task<Void, Never>?
@@ -668,11 +819,13 @@ final class SpendDashboardController {
     init(
         userDefaults: UserDefaults = .standard,
         requestBuilder: @escaping RequestBuilder,
+        cachedLoader: CachedLoader? = nil,
         loader: @escaping Loader = SpendDashboardSource.load,
         nowProvider: @escaping @Sendable () -> Date = { Date() })
     {
         self.userDefaults = userDefaults
         self.requestBuilder = requestBuilder
+        self.cachedLoader = cachedLoader
         self.loader = loader
         self.nowProvider = nowProvider
         self.selectedDays = Self.normalizedDays(userDefaults.integer(forKey: Self.daysDefaultsKey))
@@ -719,6 +872,12 @@ final class SpendDashboardController {
             self.failedSourceCount = 0
             self.rebuildModel()
         }
+        let shouldPrimeCachedCodex: Bool = if case .ordinary = phase {
+            self.cachedLoader != nil && !Set(Self.codexOwnershipByID(configuration.codexAccountIdentities).keys)
+                .isSubset(of: Set(self.loadedInputs.map(\.id)))
+        } else {
+            false
+        }
 
         guard configuration.costUsageEnabled, !configuration.providerIDs.isEmpty else {
             self.loadedInputs = []
@@ -734,6 +893,18 @@ final class SpendDashboardController {
         self.isRefreshing = true
         self.loadTask = Task { [weak self] in
             guard let self else { return }
+            if shouldPrimeCachedCodex, let cachedLoader = self.cachedLoader {
+                let cachedRequest = await self.requestBuilder(.captureOnly)
+                guard !Task.isCancelled,
+                      generation == self.generation
+                else { return }
+                let cachedResult = await cachedLoader(cachedRequest)
+                guard !Task.isCancelled,
+                      generation == self.generation,
+                      cachedRequest.configuration == self.configuration
+                else { return }
+                self.applyCached(request: cachedRequest, result: cachedResult)
+            }
             let request = await self.requestBuilder(phase.buildMode)
             guard !Task.isCancelled,
                   generation == self.generation
@@ -745,6 +916,19 @@ final class SpendDashboardController {
                 generation: generation,
                 invalidatedSourceIDs: invalidatedSourceIDs)
         }
+    }
+
+    private func applyCached(
+        request: SpendDashboardLoadRequest,
+        result: SpendDashboardLoadResult)
+    {
+        let cachedIDs = Set(result.inputs.map(\.id))
+        self.loadedInputs.removeAll { cachedIDs.contains($0.id) }
+        self.loadedInputs.append(contentsOf: result.inputs)
+        self.loadedAt = request.now
+        self.failedSourceCount = result.failedSourceCount
+        self.refreshRetainedCodexDisplayNames(request.configuration.codexAccountDisplayNames)
+        self.rebuildModel()
     }
 
     private func handleBuiltRequest(
@@ -964,7 +1148,8 @@ final class SpendDashboardController {
         self.model = SpendDashboardModel.build(
             inputs: self.loadedInputs,
             requestedDays: self.selectedDays,
-            now: self.loadedAt)
+            now: self.loadedAt,
+            preferredCurrencyCode: self.configuration?.preferredCurrencyCode ?? "auto")
     }
 
     private func refreshRetainedCodexDisplayNames(_ displayNamesByID: [String: String]) {

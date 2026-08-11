@@ -24,8 +24,9 @@ public enum OpenCodeGoUsageError: LocalizedError {
 }
 
 public struct OpenCodeGoUsageFetcher: Sendable {
-    private static let log = CodexBarLog.logger(LogCategories.opencodeGoUsage)
+    private static let log = CodexBarLog.logger(LogCategories.provider(.opencodego, scope: "usage"))
     private static let baseURL = URL(string: "https://opencode.ai")!
+    private static let authURL = URL(string: "https://opencode.ai/auth")!
     private static let serverURL = URL(string: "https://opencode.ai/_server")!
     private static let workspacesServerID = "def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f"
     private static let billingServerID = "c83b78a614689c38ebee981f9b39a8b377716db85c1fd7dbab604adc02d3313d"
@@ -121,6 +122,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         now: Date = Date(),
         workspaceIDOverride: String? = nil,
         includeZenBalance: Bool = true,
+        waitForZenBalance: Bool = false,
         session: URLSession? = nil) async throws -> OpenCodeGoUsageSnapshot
     {
         let session = session ?? self.redirectGuardSession
@@ -147,6 +149,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
                 timeout: timeout,
                 session: session)
         }
+        let zenBalanceStart = ContinuousClock.now
         let zenBalanceTask = includeZenBalance ? Task {
             try await Task.sleep(for: self.optionalZenBalanceStartDelay)
             return try await self.fetchZenBalance(
@@ -193,7 +196,11 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         guard let zenBalanceTask else {
             return snapshot
         }
-        let zenBalance = try await self.completedOptionalZenBalance(from: zenBalanceTask)
+        let zenBalance = try await self.completedOptionalZenBalance(
+            from: zenBalanceTask,
+            timeout: self.optionalZenBalanceJoinTimeout(
+                since: zenBalanceStart,
+                waitForZenBalance: waitForZenBalance))
         return snapshot.withZenBalanceUSD(zenBalance)
     }
 
@@ -235,18 +242,19 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         guard let requestCookieHeader = OpenCodeWebCookieSupport.requestCookieHeader(from: cookieHeader) else {
             throw OpenCodeGoUsageError.invalidCredentials
         }
+        let requestTimeout = min(timeout, self.optionalZenBalanceTimeout)
         let workspaceID: String = if let override = self.normalizeWorkspaceID(workspaceIDOverride) {
             override
         } else {
             try await self.fetchWorkspaceID(
                 cookieHeader: requestCookieHeader,
-                timeout: timeout,
+                timeout: requestTimeout,
                 session: session)
         }
         return try await self.fetchOptionalZenBalance(
             workspaceID: workspaceID,
             cookieHeader: requestCookieHeader,
-            timeout: min(timeout, self.optionalZenBalanceTimeout),
+            timeout: requestTimeout,
             session: session)
     }
 
@@ -263,7 +271,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         guard let workspaceID = self.normalizeWorkspaceID(raw),
               let url = URL(string: "\(self.baseURL.absoluteString)/workspace/\(workspaceID)/go")
         else {
-            return self.baseURL
+            return self.authURL
         }
         return url
     }

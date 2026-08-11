@@ -14,7 +14,7 @@ extension StatusItemController {
         let showUsed = self.settings.usageBarsShowUsed
         let needsAnimation = self.needsMenuBarIconAnimation()
         return providers.enumerated().map { index, provider in
-            let snapshot = self.store.snapshot(for: provider)
+            let snapshot = self.store.menuBarSnapshot(for: provider.instanceID)
             let window = self.menuBarMetricWindow(for: provider, snapshot: snapshot)
             let animatedPercent: Double? = if let phase, needsAnimation, self.shouldAnimate(provider: provider) {
                 max(
@@ -91,7 +91,7 @@ extension StatusItemController {
         let metricSignature = zip(providers, metrics).map { provider, metric in
             let preference = self.settings.menuBarMetricPreference(
                 for: provider,
-                snapshot: self.store.snapshot(for: provider))
+                snapshot: self.store.menuBarSnapshot(for: provider.instanceID))
             return [
                 provider.rawValue,
                 "style=\(metric.style.rawValue)",

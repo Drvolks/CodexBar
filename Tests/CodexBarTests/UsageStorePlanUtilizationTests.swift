@@ -170,6 +170,59 @@ struct UsageStorePlanUtilizationTests {
 
     @MainActor
     @Test
+    func `native chart shows monthly codex tab for a thirty day primary`() {
+        let histories = [
+            planSeries(name: .monthly, windowMinutes: 43200, entries: [
+                planEntry(at: Date(timeIntervalSince1970: 1_700_000_000), usedPercent: 55),
+            ]),
+            planSeries(name: .weekly, windowMinutes: 10080, entries: [
+                planEntry(at: Date(timeIntervalSince1970: 1_700_086_400), usedPercent: 5),
+            ]),
+        ]
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 55, windowMinutes: 43200, resetsAt: nil, resetDescription: nil),
+            secondary: RateWindow(usedPercent: 5, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+
+        let model = PlanUtilizationHistoryChartMenuView._modelSnapshotForTesting(
+            histories: histories,
+            provider: .codex,
+            snapshot: snapshot)
+
+        #expect(model.visibleSeries == ["weekly:10080", "monthly:43200"])
+        #expect(model.selectedSeries == "weekly:10080")
+    }
+
+    @MainActor
+    @Test
+    func `native chart folds legacy thirty day session and weekly history into monthly`() {
+        let histories = [
+            planSeries(name: .session, windowMinutes: 43200, entries: [
+                planEntry(at: Date(timeIntervalSince1970: 1_700_000_000), usedPercent: 80),
+            ]),
+            planSeries(name: .weekly, windowMinutes: 43200, entries: [
+                planEntry(at: Date(timeIntervalSince1970: 1_700_086_400), usedPercent: 70),
+            ]),
+            planSeries(name: .monthly, windowMinutes: 43200, entries: [
+                planEntry(at: Date(timeIntervalSince1970: 1_700_172_800), usedPercent: 55),
+            ]),
+        ]
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 55, windowMinutes: 43200, resetsAt: nil, resetDescription: nil),
+            secondary: RateWindow(usedPercent: 5, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+
+        let model = PlanUtilizationHistoryChartMenuView._modelSnapshotForTesting(
+            histories: histories,
+            provider: .codex,
+            snapshot: snapshot)
+
+        #expect(model.visibleSeries == ["monthly:43200"])
+        #expect(model.selectedSeries == "monthly:43200")
+    }
+
+    @MainActor
+    @Test
     func `claude history tabs match current snapshot bars`() {
         let histories = [
             planSeries(name: .session, windowMinutes: 300, entries: [
@@ -527,6 +580,41 @@ struct UsageStorePlanUtilizationTests {
 
     @MainActor
     @Test
+    func `plan history records thirty day codex window as monthly series`() async {
+        let store = Self.makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(
+                usedPercent: 55,
+                windowMinutes: 43200,
+                resetsAt: now.addingTimeInterval(24 * 86400),
+                resetDescription: nil),
+            secondary: RateWindow(
+                usedPercent: 5,
+                windowMinutes: 10080,
+                resetsAt: now.addingTimeInterval(7 * 86400),
+                resetDescription: nil),
+            updatedAt: now,
+            identity: ProviderIdentitySnapshot(
+                providerID: .codex,
+                accountEmail: "codex@example.com",
+                accountOrganization: nil,
+                loginMethod: "plus"))
+        store._setSnapshotForTesting(snapshot, provider: .codex)
+
+        await store.recordPlanUtilizationHistorySample(
+            provider: .codex,
+            snapshot: snapshot,
+            now: now)
+
+        let histories = store.planUtilizationHistory(for: .codex)
+        #expect(histories.contains { $0.name == .monthly && $0.windowMinutes == 43200 })
+        #expect(histories.contains { $0.name == .weekly && $0.windowMinutes == 10080 })
+        #expect(!histories.contains { $0.name == .session })
+    }
+
+    @MainActor
+    @Test
     func `plan history selects current account bucket`() throws {
         let store = Self.makeStore()
         let aliceSnapshot = Self.makeSnapshot(provider: .codex, email: "alice@example.com")
@@ -836,6 +924,66 @@ struct UsageStorePlanUtilizationTests {
         #expect(findSeries(histories, name: .session, windowMinutes: 300)?.entries.last?.usedPercent == 12)
         #expect(findSeries(histories, name: .weekly, windowMinutes: 10080)?.entries.last?.usedPercent == 57)
         #expect(findSeries(histories, name: .monthly, windowMinutes: 43200)?.entries.last?.usedPercent == 34)
+    }
+
+    @MainActor
+    @Test
+    func `record plan history stores mimo monthly series`() async {
+        let store = Self.makeStore()
+        store.settings.historicalTrackingEnabled = true
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(
+                usedPercent: 34,
+                windowMinutes: ProviderPaceCapability.monthlyWindowSentinelMinutes,
+                resetsAt: now.addingTimeInterval(20 * 24 * 60 * 60),
+                resetDescription: nil),
+            secondary: nil,
+            updatedAt: now)
+
+        await store.recordPlanUtilizationHistorySample(provider: .mimo, snapshot: snapshot, now: now)
+
+        let histories = store.planUtilizationHistory(for: .mimo)
+        #expect(findSeries(histories, name: .monthly, windowMinutes: 43200)?.entries.last?.usedPercent == 34)
+    }
+
+    @MainActor
+    @Test
+    func `record plan history stores stepfun monthly series`() async {
+        let store = Self.makeStore()
+        store.settings.historicalTrackingEnabled = true
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(
+                usedPercent: 58,
+                windowMinutes: ProviderPaceCapability.monthlyWindowSentinelMinutes,
+                resetsAt: now.addingTimeInterval(20 * 24 * 60 * 60),
+                resetDescription: nil),
+            secondary: nil,
+            updatedAt: now)
+
+        await store.recordPlanUtilizationHistorySample(provider: .stepfun, snapshot: snapshot, now: now)
+
+        let histories = store.planUtilizationHistory(for: .stepfun)
+        #expect(findSeries(histories, name: .monthly, windowMinutes: 43200)?.entries.last?.usedPercent == 58)
+    }
+
+    @MainActor
+    @Test
+    func `stepfun rolling windows keep their session and weekly history lanes`() async {
+        let store = Self.makeStore()
+        store.settings.historicalTrackingEnabled = true
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 25, windowMinutes: 300, resetsAt: nil, resetDescription: nil),
+            secondary: RateWindow(usedPercent: 40, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
+            updatedAt: now)
+
+        await store.recordPlanUtilizationHistorySample(provider: .stepfun, snapshot: snapshot, now: now)
+
+        let histories = store.planUtilizationHistory(for: .stepfun)
+        #expect(findSeries(histories, name: .session, windowMinutes: 300)?.entries.last?.usedPercent == 25)
+        #expect(findSeries(histories, name: .weekly, windowMinutes: 10080)?.entries.last?.usedPercent == 40)
     }
 
     @MainActor
@@ -1250,7 +1398,7 @@ extension UsageStorePlanUtilizationTests {
             secondary: RateWindow(usedPercent: 20, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
             updatedAt: Date(),
             identity: ProviderIdentitySnapshot(
-                providerID: provider,
+                providerID: provider.instanceID,
                 accountEmail: email,
                 accountOrganization: nil,
                 loginMethod: "plus"))

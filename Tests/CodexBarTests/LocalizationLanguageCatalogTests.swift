@@ -510,6 +510,7 @@ struct LocalizationLanguageCatalogTests {
             "Deployment",
             "Email",
             "Endpoint",
+            "File",
             "Gemini Flash",
             "GitHub",
             "Google OAuth",
@@ -539,6 +540,7 @@ struct LocalizationLanguageCatalogTests {
             "menu_bar_layout_token_account",
             "ory_session_…=…; csrftoken=…",
             "section_privacy",
+            "session_quota_estimate_value_format",
             "tab_menu",
         ]
         let unchanged = Set(english.keys.filter { italian[$0] == english[$0] })

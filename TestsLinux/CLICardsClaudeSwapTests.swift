@@ -66,7 +66,8 @@ struct CLICardsClaudeSwapTests {
     @Test
     func `configured executable path strips surrounding quotes`() {
         for rawPath in ["  \"/tmp/cswap\"  ", "  '/tmp/cswap'  "] {
-            let config = ProviderConfig(id: .claude, claudeSwapExecutablePath: rawPath)
+            var config = ProviderConfig(id: .claude)
+            config.claudeSwapExecutablePath = rawPath
             #expect(CLIClaudeSwapCards.executablePath(from: config) == "/tmp/cswap")
         }
         #expect(CLIClaudeSwapCards.executablePath(from: nil).isEmpty)
@@ -78,7 +79,8 @@ struct CLICardsClaudeSwapTests {
         let legacy = try JSONDecoder().decode(ProviderConfig.self, from: legacyData)
         #expect(legacy.claudeSwapShowSingleAccount != true)
 
-        let enabled = ProviderConfig(id: .claude, claudeSwapShowSingleAccount: true)
+        var enabled = ProviderConfig(id: .claude)
+        enabled.claudeSwapShowSingleAccount = true
         let encoded = try JSONEncoder().encode(enabled)
         let decoded = try JSONDecoder().decode(ProviderConfig.self, from: encoded)
         #expect(decoded.claudeSwapShowSingleAccount == true)
@@ -352,6 +354,7 @@ struct CLICardsClaudeSwapTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("cards-claude-swap-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let executable = directory.appendingPathComponent("cswap")
         let invocationMarker = directory.appendingPathComponent("invoked", isDirectory: true)
         let duplicateMarker = directory.appendingPathComponent("duplicate")
@@ -371,8 +374,7 @@ struct CLICardsClaudeSwapTests {
         ]}
         JSON
         """
-        try script.write(to: executable, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        try FakeExecutable.install(script, at: executable)
 
         let output = await CLIClaudeSwapCards.fetch(
             eligible: true,

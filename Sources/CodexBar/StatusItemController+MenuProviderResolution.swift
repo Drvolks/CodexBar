@@ -6,9 +6,10 @@ extension StatusItemController {
         let enabled = enabledProviders ??
             (self.shouldMergeIcons
                 ? self.mergedStatusItemProvidersForDisplay()
-                : self.store.enabledProvidersForDisplay())
+                : self.store.enabledFirstPartyProvidersForDisplay())
+        // Provider-specific by design: an empty first-party menu preserves the Codex default.
         if enabled.isEmpty { return .codex }
-        if let selected = self.selectedMenuProvider, enabled.contains(selected) {
+        if let selected = self.selectedMenuProvider?.firstPartyProvider, enabled.contains(selected) {
             return selected
         }
         // Prefer an available provider so the default menu content matches the status icon.
@@ -29,11 +30,11 @@ extension StatusItemController {
         if includesOverview, self.settings.mergedMenuLastSelectedWasOverview {
             return .overview
         }
-        return .provider(self.resolvedMenuProvider(enabledProviders: enabledProviders) ?? .codex)
+        return .provider((self.resolvedMenuProvider(enabledProviders: enabledProviders) ?? .codex).instanceID)
     }
 
     func menuProvider(for menu: NSMenu) -> UsageProvider? {
-        if let provider = self.menuProviders[ObjectIdentifier(menu)] {
+        if let provider = self.menuProviders[ObjectIdentifier(menu)]?.firstPartyProvider {
             return provider
         }
         if self.isMergedMenu(menu) {
@@ -45,6 +46,6 @@ extension StatusItemController {
         if menu === self.fallbackMenu {
             return nil
         }
-        return self.store.enabledProvidersForDisplay().first ?? .codex
+        return self.store.enabledFirstPartyProvidersForDisplay().first ?? .codex
     }
 }
