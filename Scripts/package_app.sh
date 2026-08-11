@@ -253,7 +253,16 @@ if [[ "$SIGNING_MODE" == "identity" && "$LOWER_CONF" == "release" && "$BUNDLE_ID
     echo "ERROR: Missing $PROVISIONING_PROFILE_SOURCE (required for iCloud entitlements in release builds)" >&2
     exit 1
   fi
-  EMBED_PROVISIONING_PROFILE=1
+  # The profile only authorizes its own team's restricted entitlements. Signing
+  # with a different team and embedding it anyway produces an app AMFI SIGKILLs
+  # at exec (silent exit 137, no crash report). Contributors outside the release
+  # team build without iCloud sync instead.
+  PROFILE_TEAM_ID="$(security cms -D -i "$PROVISIONING_PROFILE_SOURCE" 2>/dev/null \
+    | plutil -extract Entitlements.com\\.apple\\.developer\\.team-identifier raw -o - - 2>/dev/null || true)"
+  if [[ -n "$PROFILE_TEAM_ID" && "$PROFILE_TEAM_ID" != "$APP_TEAM_ID" ]]; then
+    echo "WARN: $(basename "$PROVISIONING_PROFILE_SOURCE") is for team ${PROFILE_TEAM_ID} but signing team is ${APP_TEAM_ID}; building without iCloud sync." >&2
+  else
+    EMBED_PROVISIONING_PROFILE=1
   ICLOUD_ENTITLEMENT_KEYS=$(cat <<ICLOUD
     <key>com.apple.application-identifier</key>
     <string>${APP_TEAM_ID}.${BUNDLE_ID}</string>
@@ -271,6 +280,7 @@ if [[ "$SIGNING_MODE" == "identity" && "$LOWER_CONF" == "release" && "$BUNDLE_ID
     <string>Production</string>
 ICLOUD
 )
+  fi
 fi
 cat > "$APP_ENTITLEMENTS" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
